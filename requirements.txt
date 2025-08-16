@@ -1,5 +1,7 @@
 streamlit
 jupyter
+<<<<<<< HEAD
+=======
 pandas
 seaborn
 playwright 
@@ -11,3 +13,7 @@ loguru
 SQLAlchemy
 PyMySQL
 python-dotenv
+selenium>=4.15.0
+webdriver-manager>=4.0.0
+requests>=2.31.0
+>>>>>>> df93f06 (playwright 기반 크롤링(샘플 1개주택 대상만))
