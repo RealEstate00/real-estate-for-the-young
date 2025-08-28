@@ -240,6 +240,15 @@ Thumbs.db:encryptable
 ehthumbs.db
 ehthumbs_vista.db
 
+<<<<<<< HEAD
+=======
+<<<<<<< HEAD
+# Marimo
+marimo/_static/
+marimo/_lsp/
+__marimo__/
+=======
+>>>>>>> 1b5ae4c (feat: 공동체 주택 크롤링 완료!!)
 # Dump file
 *.stackdump
 
@@ -321,6 +330,7 @@ data/
 <<<<<<< HEAD
 <<<<<<< HEAD
 # End of https://www.toptal.com/developers/gitignore/api/python,macos,windows
+<<<<<<< HEAD
 =======
 >>>>>>> 56d72c5 (chore : .gitignore)
 # End of https://www.toptal.com/developers/gitignore/api/python,macos,windows
@@ -329,3 +339,9 @@ data/
 =======
 # End of https://www.toptal.com/developers/gitignore/api/python,macos,windows
 >>>>>>> a2326ac (chore:gitignore 수정)
+=======
+<<<<<<< HEAD
+=======
+>>>>>>> 55501a6 (공동체 주택 크롤링 완료!!)
+>>>>>>> 1b5ae4c (feat: 공동체 주택 크롤링 완료!!)
+>>>>>>> cd1ceb2 (feat: 공동체 주택 크롤링 완료!!)

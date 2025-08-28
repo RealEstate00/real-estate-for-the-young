@@ -13,7 +13,12 @@ loguru
 SQLAlchemy
 PyMySQL
 python-dotenv
-selenium>=4.15.0
+selenium>=4.20.0
 webdriver-manager>=4.0.0
 requests>=2.31.0
+<<<<<<< HEAD
 >>>>>>> df93f06 (playwright 기반 크롤링(샘플 1개주택 대상만))
+=======
+chromedriver-autoinstaller>=0.6.4
+lxml>=4.9.3
+>>>>>>> 55501a6 (공동체 주택 크롤링 완료!!)
