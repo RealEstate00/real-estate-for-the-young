@@ -22,7 +22,6 @@ from crawl_platforms_raw import (
     RAW_HEADER, sha256, KST, TODAY, make_record
 )
 
-
 class RTMSCrawler:
     """RTMS (Real Estate Transaction Management System) crawler for rent data"""
     
@@ -480,7 +479,6 @@ class RTMSCrawler:
         
         self.progress.update(f"[DONE] RTMS crawl completed: {total_jobs} jobs")
 
-
 class LandPriceCrawler:
     """Land price data crawler for Seoul public data"""
     
@@ -717,7 +715,6 @@ class LandPriceCrawler:
             browser.close()
         
         self.progress.update(f"[DONE] Land price files: {len(rows)}")
-
 
 # CLI Interface
 if __name__ == "__main__":
