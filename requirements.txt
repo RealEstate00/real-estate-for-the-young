@@ -1,2 +1,13 @@
 streamlit
 jupyter
+pandas
+seaborn
+playwright 
+beautifulsoup4
+lxml
+pydantic
+pyyaml
+loguru
+SQLAlchemy
+PyMySQL
+python-dotenv
