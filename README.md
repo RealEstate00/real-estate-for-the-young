@@ -1,4 +1,4 @@
-# 서울주택도시공사 주택지원 봇
+# 청년 서울주택지원 봇
 
 서울시 주택 관련 정보를 수집하고 분석하는 크롤링 시스템입니다.
 
@@ -68,7 +68,7 @@ python backend/main.py all --fresh
 ## 📁 프로젝트 구조
 
 ```
-SeoulHousingAssistBot/
+real-estate-for-the-young/
 ├── backend/                     # 백엔드 (Python)
 │   ├── api/                     # API 서버 (메인)
 │   │   ├── main.py             # FastAPI 메인 앱
