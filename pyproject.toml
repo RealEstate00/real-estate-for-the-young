@@ -14,6 +14,6 @@ where = ["."]
 include = ["backend*"]    # discover backend, backend.services, ...
 
 [project.scripts]
-data_collection = "backend.services.data_collection.cli.__main__:main"
+data-collection = "backend.services.data_collection.cli.__main__:main"
 # (선택) API 엔트리도 노출하고 싶다면:
 # rey_api = "backend.services.api.app.main:run"

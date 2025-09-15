@@ -14,7 +14,7 @@ COMMANDS = {
     # add more commands here as you modularize
 }
 
-HELP = f"""data_collection <command> [args]
+HELP = f"""data-collection <command> [args]
 
 Commands:
   crawl              Run platform crawlers (see module --help)
@@ -25,8 +25,8 @@ Commands:
   db-create-load     Create DB and load
 
 Examples:
-  data_collection crawl --help
-  data_collection crawl --target sohouse --since 2025-01-01
+  data-collection crawl --help
+  data-collection crawl --target sohouse --since 2025-01-01
 """
 
 def main() -> None:
