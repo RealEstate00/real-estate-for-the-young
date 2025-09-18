@@ -45,7 +45,7 @@ def save_to_csv(data: List[Dict], source: str = "localdata"
 
         # 프로젝트 루트 디렉토리 기준으로 절대 경로 생성
         project_root = Path(__file__).parent.parent.parent.parent.parent
-        base_folder = project_root / "data" / "public-api"
+        base_folder = project_root / "backend" / "data" / "public-api"
         
         if source == "seoul":
             folder = base_folder / "openseoul"

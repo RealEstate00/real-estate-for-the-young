@@ -17,7 +17,7 @@ class RawDataAnalyzer:
         if data_root is None:
             # backend 루트 기준으로 data/raw 경로 설정 (분석할 데이터 위치)
             # data_analyzer.py -> parsers -> services -> ingestion -> backend
-            self.data_root = Path(__file__).parent.parent.parent.parent.parent / "data" / "raw"
+            self.data_root = Path(__file__).parent.parent.parent.parent.parent / "backend" / "data" / "raw"
         else:
             self.data_root = Path(data_root)
         self.platforms = []
@@ -252,7 +252,7 @@ class RawDataAnalyzer:
     
     def save_analysis_report(self):
         """분석 보고서를 JSON 파일로 저장"""
-        report_path = Path("data_analysis_report.json")
+        report_path = Path("backend/data_analysis_report.json")
         
         report = {
             'analysis_date': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
