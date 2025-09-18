@@ -1,0 +1,68 @@
+{
+  "facilities": {
+    "subway_station": "증산역",
+    "bus": "명지대삼거리, 명지대입구.서울무용센터",
+    "nearby_마트": "세븐일레븐 70m, GS25 100m",
+    "nearby_병원": "-",
+    "nearby_학교": "명지대학교",
+    "nearby_시설": "-",
+    "nearby_카페": "-"
+  },
+  "company_info": {
+    "company_name": "써드플레이스",
+    "representative": "박창현",
+    "homepage": "https://thirdplace.co.kr/"
+  },
+  "housing_specific": {
+    "deposit_range": "55,000,000원 ~ 2,000,000,000원",
+    "monthly_rent_range": "80,000원 ~ 1,500,000원",
+    "area_info": "전용 394.57m² / 공용 23.76m²",
+    "private_area": "394.57m²",
+    "common_area": "23.76m²",
+    "total_area": "394.57m²",
+    "area_range": "18.23m² ~ 394.57m²"
+  },
+  "building_details": {
+    "address": "서울 서대문구 홍은동 402-23 써드플레이스 홍은6"
+  },
+  "cohouse_text_extracted_info": {
+    "extracted_patterns": {
+      "areas": [
+        "394.57",
+        "23.76",
+        "27.52",
+        "32.27",
+        "39.43",
+        "25.03",
+        "29.13",
+        "26.91",
+        "49.67",
+        "18.23",
+        "27.02",
+        "55.4",
+        "23.6"
+      ],
+      "prices": [
+        "55,000,000",
+        "2,000,000,000",
+        "1,500,000",
+        "200,000,000",
+        "80,000",
+        "590,000",
+        "150,000,000",
+        "570,000",
+        "160,000",
+        "750,000",
+        "1,300,000"
+      ],
+      "dates": [
+        "2025-04-18"
+      ]
+    }
+  },
+  "_meta": {
+    "source": "cohouse",
+    "schema": "v1",
+    "fetched_at": "2025-09-15T13:18:36.063385"
+  }
+}

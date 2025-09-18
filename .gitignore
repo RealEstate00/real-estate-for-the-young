@@ -313,7 +313,7 @@ $RECYCLE.BIN/
 # 크롤링 엑셀 파일
 
 # data outputs // 크롤링 파일 제외
-data/raw/
+backend/data/raw/
 pdf/
 >>>>>>> 90c0867 (chore:gitignore 수정)
 =======
