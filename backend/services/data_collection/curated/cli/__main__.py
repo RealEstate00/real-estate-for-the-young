@@ -59,8 +59,8 @@ def normalize_data(raw_csv_path: str, output_dir: str = None):
             print(f"❌ 플랫폼명 또는 날짜를 추출할 수 없습니다: {raw_csv_path}")
             return False
         
-        # data/normalized/날짜/플랫폼명/ 구조로 생성
-        output_path = Path("data") / "normalized" / date_str / platform_name
+        # backend/data/normalized/날짜/플랫폼명/ 구조로 생성
+        output_path = Path("backend/data/normalized") / date_str / platform_name
     
     output_path.mkdir(parents=True, exist_ok=True)
     
@@ -135,7 +135,7 @@ def run_pipeline(raw_csv_path: str, output_dir: str = None, db_url: str = None):
 
 def find_latest_raw_data(platform: str = None, date: str = None) -> List[Path]:
     """최근 날짜의 raw 데이터 파일들을 찾기"""
-    raw_dir = Path("data/raw")
+    raw_dir = Path("backend/data/raw")
     if not raw_dir.exists():
         return []
     

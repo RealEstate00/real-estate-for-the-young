@@ -72,6 +72,8 @@ pip install -e .
 
 # 또는 requirements.txt로 설치
 pip install -r backend/requirements.txt
+
+playwright install
 ```
 
 ### 4. 환경변수 설정
