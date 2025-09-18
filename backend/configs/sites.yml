@@ -2,7 +2,7 @@ default:
   rate_limit_rps: 1.0
   timeout_ms: 60000
   max_pages: 5
-  user_agent: "Real Estate for the Young/0.1 (contact: you@example.com)"
+  user_agent: "SeoulHousingAssistBot/0.1 (contact: you@example.com)"
 
 sites:
   sohouse_home:

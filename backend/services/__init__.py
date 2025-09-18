@@ -1,1 +1,1 @@
-# Data ingestion service
+# Services package

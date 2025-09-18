@@ -1,32 +1,165 @@
+version: "3.8"
+
 services:
-  db:
-    image: postgres:15
-    container_name: my_postgres
-    restart: unless-stopped
+  # PostgreSQL 데이터베이스
+  postgres:
+    image: postgres:15-alpine
+    container_name: seoul_housing_postgres
     environment:
-      POSTGRES_USER: root
-      POSTGRES_PASSWORD: root1234
-      POSTGRES_DB: mydb
-      TZ: Asia/Seoul
+      POSTGRES_DB: rey
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: post1234
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=ko_KR.UTF-8"
     ports:
       - "5432:5432"
     volumes:
-      - pgdata:/var/lib/postgresql/data
-
-  pgadmin:
-    image: dpage/pgadmin4
-    container_name: my_pgadmin
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/db/postgresql/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql
+    networks:
+      - housing_network
     restart: unless-stopped
-    environment:
-      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL}
-      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d rey"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Redis (캐싱 및 세션 관리)
+  redis:
+    image: redis:7-alpine
+    container_name: seoul_housing_redis
     ports:
-      - "5050:80"
-    depends_on:
-      - db
+      - "6379:6379"
     volumes:
-      - pgadmin_data:/var/lib/pgadmin
+      - redis_data:/data
+    networks:
+      - housing_network
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+
+  # API 서버 (메인)
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: seoul_housing_api
+    environment:
+      - DATABASE_URL=postgresql://postgres:post1234@postgres:5432/rey
+      - REDIS_URL=redis://redis:6379
+      - ENVIRONMENT=production
+      - SECRET_KEY=your-secret-key-here
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend/data:/app/data
+      - ./backend/logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - housing_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # 프론트엔드 웹 애플리케이션
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: seoul_housing_frontend
+    environment:
+      - REACT_APP_API_URL=http://localhost:8000
+      - REACT_APP_ENVIRONMENT=production
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+    networks:
+      - housing_network
+    restart: unless-stopped
+
+  # Nginx (리버스 프록시)
+  nginx:
+    image: nginx:alpine
+    container_name: seoul_housing_nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./nginx/ssl:/etc/nginx/ssl
+    depends_on:
+      - frontend
+      - api
+    networks:
+      - housing_network
+    restart: unless-stopped
+
+  # 크롤링 스케줄러 (Celery)
+  crawler:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: seoul_housing_crawler
+    command: celery -A app.celery worker --loglevel=info
+    environment:
+      - DATABASE_URL=postgresql://postgres:post1234@postgres:5432/rey
+      - REDIS_URL=redis://redis:6379
+    volumes:
+      - ./backend/data:/app/data
+      - ./backend/logs:/app/logs
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - housing_network
+    restart: unless-stopped
+
+  # 크롤링 스케줄러 (Celery Beat)
+  crawler_scheduler:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: seoul_housing_crawler_scheduler
+    command: celery -A app.celery beat --loglevel=info
+    environment:
+      - DATABASE_URL=postgresql://postgres:post1234@postgres:5432/rey
+      - REDIS_URL=redis://redis:6379
+    volumes:
+      - ./backend/data:/app/data
+      - ./backend/logs:/app/logs
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - housing_network
+    restart: unless-stopped
+
+  # 모니터링 (Grafana)
+  grafana:
+    image: grafana/grafana:latest
+    container_name: seoul_housing_grafana
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    ports:
+      - "3001:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+    networks:
+      - housing_network
+    restart: unless-stopped
 
 volumes:
-  pgdata:
-  pgadmin_data:
+  postgres_data:
+  redis_data:
+  grafana_data:
+
+networks:
+  housing_network:
+    driver: bridge

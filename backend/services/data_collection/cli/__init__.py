@@ -1,1 +1,1 @@
-# Shared libraries
+# CLI package for housing platform crawlers

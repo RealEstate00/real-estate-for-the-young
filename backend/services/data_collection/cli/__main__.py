@@ -6,27 +6,26 @@ from importlib import import_module
 
 COMMANDS = {
     "crawl": "backend.services.data_collection.cli.crawl_platforms_raw",
-    "migrate-pg": "backend.services.data_collection.cli.migrate_to_postgresql",
-    "migrate-db": "backend.services.data_collection.cli.migrate_database",
-    "load-csv-mysql": "backend.services.data_collection.cli.load_csv_to_mysql",
-    "load-mysql": "backend.services.data_collection.cli.load_to_mysql",
-    "db-create-load": "backend.services.data_collection.cli.db_create_and_load",
+    "api": "backend.services.data_collection.cli.api_cli",
+    "normalized": "backend.services.data_collection.cli.normalized_cli",
     # add more commands here as you modularize
 }
 
-HELP = f"""data-collection <command> [args]
+HELP = f"""data_collection <command> [args]
 
 Commands:
   crawl              Run platform crawlers (see module --help)
-  migrate-pg         Migrate data to PostgreSQL
-  migrate-db         Generic migration script
-  load-csv-mysql     Load CSV into MySQL
-  load-mysql         Load into MySQL
-  db-create-load     Create DB and load
+  api                API data collection commands (see module --help)
+  normalized         Data normalization commands (see module --help)
 
 Examples:
-  data-collection crawl --help
-  data-collection crawl --target sohouse --since 2025-01-01
+  data_collection crawl --help
+  data_collection crawl --target sohouse --since 2025-01-01
+  data_collection api --help
+  data_collection api load
+  data_collection api housing
+  data_collection normalized --help
+  data_collection normalized process
 """
 
 def main() -> None:

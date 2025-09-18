@@ -3,9 +3,9 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "Real-Estate-for-the-Young"
+name = "Real_Estate-for-the-Young"
 version = "0.1.0"
-description = "Real Estate for the Young backend"
+description = "Real_Estate-for-the-Young"
 readme = "README.md"
 requires-python = ">=3.12,<3.14"
 
@@ -14,6 +14,5 @@ where = ["."]
 include = ["backend*"]    # discover backend, backend.services, ...
 
 [project.scripts]
-data-collection = "backend.services.data_collection.cli.__main__:main"
-# (선택) API 엔트리도 노출하고 싶다면:
-# rey_api = "backend.services.api.app.main:run"
+data_collection = "backend.services.data_collection.cli.__main__:main"
+sha-db = "backend.db.db_manager:main"

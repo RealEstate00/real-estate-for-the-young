@@ -1,104 +1,350 @@
-# 청년 서울주택지원 봇
+# 서울주택도시공사 주택지원 봇
 
 서울시 주택 관련 정보를 수집하고 분석하는 크롤링 시스템입니다.
 
+## 📋 시스템 요구사항
+
+- **Python**: 3.12+ (권장: 3.12)
+- **OS**: macOS, Linux, Windows
+- **데이터베이스**: PostgreSQL (선택사항)
+
+## 🚀 설치 및 설정
+
+### 1. 저장소 클론
+
+```bash
+git clone <repository-url>
+cd SeoulHousingAssistBot
+```
+
+### 2. Python 가상환경 생성 및 활성화
+
+#### uv 사용 (권장)
+
+```bash
+# Python 3.12로 가상환경 생성
+uv venv --python 3.12
+
+# 가상환경 활성화
+# macOS/Linux:
+source .venv/bin/activate
+# Windows:
+# .venv\Scripts\activate
+```
+
+#### pip 사용
+
+```bash
+# Python 3.12 사용 (권장)
+python3.12 -m venv .venv
+
+# 가상환경 활성화
+# macOS/Linux:
+source venv/bin/activate
+# Windows:
+# venv\Scripts\activate
+```
+
+### 3. 패키지 설치
+
+#### uv 사용 (권장)
+
+```bash
+# uv 설치 (아직 설치하지 않은 경우)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# 개발 모드로 설치 (권장)
+uv pip install -e .
+
+# 또는 requirements.txt로 설치
+uv pip install -r backend/requirements.txt
+
+# 가상환경과 함께 설치
+uv venv
+uv pip install -e .
+```
+
+#### pip 사용
+
+```bash
+# 개발 모드로 설치 (권장)
+pip install -e .
+
+# 또는 requirements.txt로 설치
+pip install -r backend/requirements.txt
+```
+
+### 4. 환경변수 설정
+
+```bash
+# .env 파일 생성
+cp backend/env.example .env
+
+# .env 파일 편집하여 API 키 설정
+# SEOUL_API_KEY=your_seoul_api_key_here
+# LOCALDATA_API_KEY=your_localdata_api_key_here
+```
+
 ## 🚀 빠른 시작
 
-### 통합 실행 스크립트 (main.py)
-
-#### 크롤링
+### ⚡ uv로 빠른 설정 (권장)
 
 ```bash
-python backend/main.py crawl sohouse --fresh          # 사회주택 크롤링 (기존 데이터 삭제)
-python backend/main.py crawl cohouse                  # 공동체주택 크롤링
-python backend/main.py crawl youth --fresh            # 청년주택 크롤링 (기존 데이터 삭제)
-python backend/main.py crawl happy                    # 행복주택 크롤링
-python backend/main.py crawl lh-ann --fresh           # LH 공고 크롤링 (기존 데이터 삭제)
-python backend/main.py crawl sh-ann                   # SH 공고 크롤링
+# 1. 저장소 클론
+git clone <repository-url>
+cd SeoulHousingAssistBot
+
+# 2. uv로 가상환경 생성 및 패키지 설치
+uv venv --python 3.12
+source .venv/bin/activate  # macOS/Linux
+uv pip install -e .
+
+# 3. 환경변수 설정
+cp backend/env.example .env
+# .env 파일 편집하여 API 키 설정
+
+# 4. API 데이터 수집 테스트
+data_collection api load --csv
+```
+
+## 📋 상세 설치 가이드
+
+```bash
+# 서울 열린데이터 수집 (모든 서비스 - 7개)
+data_collection api load --csv
+# 수집 데이터: 지하철역, 약국, 어린이집, 초등학교, 학교, 대학교, 공원
+
+# 특정 서비스만 수집
+data_collection api public --csv    # 지하철역 정보만 (SearchSTNBySubwayLineInfo)
+data_collection api housing --csv   # 공원 정보만 (SearchParkInfoService)
+
+# CSV 저장 없이 수집만 (데이터는 메모리에만 로드)
+data_collection api load
+data_collection api public
+data_collection api housing
+
+# 로컬데이터 포털 수집 (API 권한 필요)
+data_collection api load --source localdata --csv
+```
+
+#### 📊 수집되는 데이터 상세
+
+**`data_collection api load --csv` 실행 시:**
+
+1. **SearchSTNBySubwayLineInfo** - 지하철역 정보 (799건)
+2. **TbPharmacyOperateInfo** - 약국 운영 정보 (1000건)
+3. **ChildCareInfo** - 어린이집 정보 (1000건)
+4. **childSchoolInfo** - 초등학교 정보 (944건)
+5. **neisSchoolInfo** - 학교 정보 (1000건)
+6. **SebcCollegeInfoKor** - 대학교 정보 (64건)
+7. **SearchParkInfoService** - 공원 정보 (131건)
+
+**저장 위치:** `backend/data/public-api/openseoul/`
+
+### 크롤링 데이터 수집
+
+```bash
+# 사회주택 크롤링
+data_collection crawl sohouse --fresh
+
+# 공동체주택 크롤링
+data_collection crawl cohouse --fresh
+
+# 청년주택 크롤링
+data_collection crawl youth --fresh
 
 # 모든 플랫폼 크롤링
-python backend/main.py crawl all --fresh
+data_collection crawl all --fresh
 ```
 
-#### 데이터 분석
+### 데이터 분석 및 변환
 
 ```bash
-python backend/main.py analyze                        # RAW 데이터 분석
+# 크롤링된 데이터 정규화 (분석)
+data_collection normalized process
+
+# 특정 플랫폼만 정규화
+data_collection normalized process --platform sohouse
+
+# 특정 날짜만 정규화
+data_collection normalized process --date 2025-09-18
+
+# 정규화 후 DB에 저장
+data_collection normalized process --db
+
+# 전체 프로세스 (크롤링 → 정규화)
+data_collection crawl all --fresh && data_collection normalized process
 ```
 
-#### 데이터 변환 (추천 서비스용)
+### 데이터베이스 관리
 
 ```bash
-python backend/main.py migrate                        # 추천 서비스용 데이터 변환
+# 데이터베이스 테이블 생성
+sha-db create
+
+# 데이터베이스 연결 테스트
+sha-db test
+
+# 모든 테이블 목록 확인
+sha-db list
+
+# 특정 테이블 구조 확인
+sha-db structure bus_stops
+
+# PostgreSQL로 데이터 마이그레이션
+sha-db migrate-pg
+
+# MySQL에 데이터 로드
+sha-db load-mysql
+
+# 데이터베이스 초기화 (주의!)
+sha-db reset
 ```
 
-#### 전체 프로세스
+## 📁 데이터 저장 위치
+
+### API 데이터
+
+- **서울 열린데이터**: `backend/data/public-api/openseoul/`
+- **로컬데이터 포털**: `backend/data/public-api/localdata/`
+
+### 크롤링 데이터
+
+- **사회주택**: `backend/data/raw/sohouse/`
+- **공동체주택**: `backend/data/raw/cohouse/`
+- **청년주택**: `backend/data/raw/youth/`
+
+## 🔑 API 키 설정
+
+### 서울 열린데이터광장
+
+1. [서울 열린데이터광장](https://data.seoul.go.kr/) 회원가입
+2. API 키 발급 신청
+3. `.env` 파일에 `SEOUL_API_KEY` 설정
+
+### 로컬데이터 포털 (선택사항)
+
+1. [로컬데이터 포털](https://www.localdata.go.kr/) 회원가입
+2. API 키 발급 신청
+3. `.env` 파일에 `LOCALDATA_API_KEY` 설정
+
+## 🛠️ 문제 해결
+
+### Import 오류 해결
 
 ```bash
-python backend/main.py all --fresh                   # 크롤링 → 분석 → 변환
+# uv 사용
+uv pip install -e .
+
+# pip 사용
+pip install -e .
 ```
 
-### 사용법 상세
+### API 키 오류
+
+- `.env` 파일이 프로젝트 루트에 있는지 확인
+- API 키가 올바르게 설정되었는지 확인
+- API 키 권한이 있는지 확인
+
+### 데이터 저장 경로 오류
+
+- `backend/data/` 디렉토리가 존재하는지 확인
+- 쓰기 권한이 있는지 확인
+
+## 📊 수집 가능한 데이터
+
+### 서울 열린데이터광장
+
+- 지하철역 정보 (SearchSTNBySubwayLineInfo)
+- 약국 운영 정보 (TbPharmacyOperateInfo)
+- 어린이집 정보 (ChildCareInfo)
+- 초등학교 정보 (childSchoolInfo)
+- 학교 정보 (neisSchoolInfo)
+- 대학교 정보 (SebcCollegeInfoKor)
+- 공원 정보 (SearchParkInfoService)
+
+### 크롤링 데이터
+
+- 사회주택 공고
+- 공동체주택 공고
+- 청년주택 공고
+- LH 공고
+- SH 공고
+
+### 직접 CLI 모듈 실행 (고급 사용자용)
 
 ```bash
-# 도움말 보기
-python backend/main.py --help
+# 크롤링 모듈 직접 실행
+python -m backend.services.data_collection.cli.crawl_platforms sohouse --fresh
+python -m backend.services.data_collection.cli.crawl_platforms cohouse --fresh
+python -m backend.services.data_collection.cli.crawl_platforms youth --fresh
 
-# 크롤링 도움말
-python backend/main.py crawl --help
+# API 수집 모듈 직접 실행
+python -m backend.services.data_collection.public-api.run --source seoul --service all --csv
+python -m backend.services.data_collection.public-api.run --source localdata --csv
 
-# 특정 플랫폼 크롤링
-python backend/main.py crawl sohouse --fresh
-python backend/main.py crawl cohouse
-python backend/main.py crawl youth --fresh
-python backend/main.py crawl happy
-python backend/main.py crawl lh-ann --fresh
-python backend/main.py crawl sh-ann
+# 정규화 CLI 직접 실행
+python -m backend.services.data_collection.cli.normalized_cli process
 
-# 데이터 분석
-python backend/main.py analyze
-
-# 추천 서비스용 데이터 변환
-python backend/main.py migrate
-
-# 전체 프로세스 (크롤링 → 분석 → 변환)
-python backend/main.py all --fresh
+# 데이터베이스 관리 (권장: sha-db 사용)
+sha-db create              # 데이터베이스 테이블 생성
+sha-db list                # 모든 테이블 목록
+sha-db test                # 데이터베이스 연결 테스트
+sha-db migrate-pg          # PostgreSQL로 데이터 마이그레이션
+sha-db load-mysql          # MySQL에 데이터 로드
 ```
 
 ## 📁 프로젝트 구조
 
 ```
-real-estate-for-the-young/
+SeoulHousingAssistBot/
 ├── backend/                     # 백엔드 (Python)
-│   ├── api/                     # API 서버 (메인)
-│   │   ├── main.py             # FastAPI 메인 앱
-│   │   ├── database.py         # 데이터베이스 연결
-│   │   ├── core/               # 핵심 설정
-│   │   │   └── config.py       # 애플리케이션 설정
-│   │   └── routers/            # API 엔드포인트
-│   ├── data_collection/        # 데이터 수집 (크롤링 + 공공 API)
-│   │   ├── crawler/            # 크롤링 서비스
-│   │   │   ├── services/       # 비즈니스 로직
-│   │   │   │   ├── crawlers/  # 크롤링 서비스
-│   │   │   │   │   ├── base.py    # 기본 크롤러 클래스
-│   │   │   │   │   ├── so_co.py   # 사회주택/공동체주택 통합
-│   │   │   │   │   ├── youth.py   # 청년안심주택 특화
-│   │   │   │   │   ├── sh.py      # SH 행복주택 특화
-│   │   │   │   │   ├── lh.py      # LH 공고 특화
-│   │   │   │   │   └── public.py  # RTMS/지가공시 특화
-│   │   │   │   └── storage/        # 저장소 서비스
-│   │   │   ├── parsers/        # 데이터 파싱
-│   │   │   └── utils/          # 유틸리티
-│   │   └── public_api/         # 공공 API (다른 팀원 담당)
+│   ├── services/               # 서비스 레이어
+│   │   └── data_collection/    # 데이터 수집 서비스
+│   │       ├── cli/            # CLI 명령어
+│   │       │   ├── __main__.py # 메인 CLI 진입점
+│   │       │   ├── api_cli.py  # API 수집 CLI
+│   │       │   └── crawl_platforms_raw.py # 크롤링 CLI
+│   │       ├── crawlers/       # 크롤링 서비스
+│   │       │   ├── base.py     # 기본 크롤러 클래스
+│   │       │   ├── so.py       # 사회주택 크롤러
+│   │       │   ├── co.py       # 공동체주택 크롤러
+│   │       │   ├── youth.py    # 청년주택 크롤러
+│   │       │   ├── sh.py       # SH 공고 크롤러
+│   │       │   └── lh.py       # LH 공고 크롤러
+│   │       ├── public-api/       # 공공 API 수집
+│   │       │   ├── run.py      # API 실행 스크립트
+│   │       │   ├── api_client.py # API 클라이언트
+│   │       │   ├── config.py   # API 설정
+│   │       │   ├── pipeline.py # 데이터 파이프라인
+│   │       │   ├── transform.py # 데이터 변환
+│   │       │   └── db.py       # 데이터 저장
+│   │       ├── parsers/        # 데이터 파싱
+│   │       │   ├── parsers.py      # HTML/JSON 파싱 (주택 공고 데이터)
+│   │       │   └── data_analyzer.py # RAW 데이터 분석 및 통계
+│   │       └── curated/        # 데이터 정제
+│   │           └── normalizer.py # 데이터 정규화
 │   ├── db/                     # 데이터베이스
 │   │   ├── postgresql/         # PostgreSQL 스키마
-│   │   └── create_tables.sql   # MySQL 테이블
-│   ├── data/                   # 크롤링 데이터
+│   │   └── db_manager.py       # DB 관리
+│   ├── data/                   # 데이터 저장소
+│   │   ├── raw/               # 크롤링 원본 데이터
+│   │   │   ├── sohouse/       # 사회주택 데이터
+│   │   │   ├── cohouse/       # 공동체주택 데이터
+│   │   │   └── youth/         # 청년주택 데이터
+│   │   └── public-api/          # API 수집 데이터
+│   │       ├── openseoul/     # 서울 열린데이터
+│   │       └── localdata/     # 로컬데이터 포털
 │   ├── logs/                   # 로그 파일
 │   ├── docs/                   # 문서
 │   ├── tests/                  # 테스트
 │   ├── config/                 # 설정 파일
-│   └── main.py                 # 통합 실행 스크립트
+│   └── src/                    # 소스 코드
+│       └── cli/                # CLI 모듈
+│           ├── __main__.py     # 메인 CLI 진입점
+│           ├── crawl_platforms.py  # 크롤링 CLI
+│           ├── analyze_raw_data.py # 분석 CLI
+│           └── migrate_database.py # 마이그레이션 CLI
 │   ├── requirements.txt        # Python 의존성
 │   └── Dockerfile              # 백엔드 Docker 이미지
 ├── frontend/                    # 프론트엔드 (React)
@@ -146,12 +392,15 @@ real-estate-for-the-young/
 
 ```bash
 # 모든 플랫폼 크롤링 완료
-python -m src.cli.crawl_platforms sohouse --fresh
-python -m src.cli.crawl_platforms cohouse --fresh
-python -m src.cli.crawl_platforms youth --fresh
-python -m src.cli.crawl_platforms happy --fresh
-python -m src.cli.crawl_platforms lh-ann --fresh
-python -m src.cli.crawl_platforms sh-ann --fresh
+python -m src.cli crawl all --fresh
+
+# 또는 개별 실행
+python -m src.cli crawl sohouse --fresh
+python -m src.cli crawl cohouse --fresh
+python -m src.cli crawl youth --fresh
+python -m src.cli crawl happy --fresh
+python -m src.cli crawl lh-ann --fresh
+python -m src.cli crawl sh-ann --fresh
 
 # 공공데이터 크롤링
 python scripts/crawl_public_raw.py rtms_all --from 2020 --to 2024
@@ -219,11 +468,17 @@ co_crawler = CoHouseCrawler(progress)  # cohouse
 - CSV 컬럼으로 승격: `주택유형`, `주거형태`, `지하철역`, `교통`
 - JSON에는 새로운 정보만 저장 (중복 제거)
 
+#### **📊 테이블 데이터 최적화**
+
+- **occupancy 테이블만 저장**: `info_table_csv` 중복 제거
+- **데이터 일관성**: 입주현황 테이블만 CSV로 저장하여 중복 방지
+- **저장 공간 절약**: 불필요한 info 테이블 생성 제거
+
 ### 3. 데이터 분석 (크롤링 완료 후)
 
 ```bash
 # 크롤링된 데이터 분석
-python src/cli/analyze_raw_data.py
+python -m src.cli analyze
 ```
 
 ### 4. 데이터베이스 마이그레이션 (분석 후)
@@ -233,10 +488,10 @@ python src/cli/analyze_raw_data.py
 mysql -u root -p < db/create_tables_improved.sql
 
 # 기존 데이터 마이그레이션
-python src/cli/migrate_database.py --migrate
+python -m src.cli migrate
 
 # 데이터 검증
-python src/cli/migrate_database.py --validate
+python -m src.cli.migrate_database --validate
 ```
 
 ## 🗄️ 데이터베이스 설계 (JSONB 규칙)
@@ -348,12 +603,10 @@ data/raw/2025-09-10/sohouse/
 
 - ✅ **사회주택 (sohouse)**: 완전 구현 (SoCoCrawler 통합)
 - ✅ **공동체주택 (cohouse)**: 완전 구현 (SoCoCrawler 통합)
-- ✅ **청년주택 (youth)**: 완전 구현
-- ✅ **행복주택 (happy)**: 완전 구현
-- ✅ **SH 공고 (sh-ann)**: 완전 구현
-- ✅ **LH 공고 (lh-ann)**: 완전 구현
-- ✅ **RTMS (rtms_rent)**: 완전 구현
-- ✅ **지가공시 (landprice)**: 완전 구현
+- 👩🏻‍💻 **청년주택 (youth)**: 구현 중
+- 👩🏻‍💻 **행복주택 (happy)**: 구현 예정
+- 👩🏻‍💻 **SH 공고 (sh-ann)**: 구현 예정
+- 👩🏻‍💻 **LH 공고 (lh-ann)**: 구현 예정
 
 ### 🔧 SO/CO 크롤러 통합 장점
 
@@ -425,6 +678,7 @@ data/raw/{platform}/
 - ✅ 첨부파일 필터링 개선
 - ✅ 주택 분류 필드 CSV 컬럼으로 승격
 - ✅ 텍스트 파일 생성 시점 문제 해결 (detail_text 직접 전달)
+- ✅ 테이블 데이터 최적화 (info_table_csv 중복 제거)
 
 ### 🔄 현재 진행 중
 
@@ -432,22 +686,22 @@ data/raw/{platform}/
 
 ```bash
 # 간단한 실행 (권장)
-python main.py all --fresh
+python -m src.cli all --fresh
 
 # 또는 개별 실행
-python main.py sohouse --fresh
-python main.py cohouse --fresh
-python main.py youth --fresh
-python main.py happy --fresh
-python main.py lh-ann --fresh
-python main.py sh-ann --fresh
+python -m src.cli crawl sohouse --fresh
+python -m src.cli crawl cohouse --fresh
+python -m src.cli crawl youth --fresh
+python -m src.cli crawl happy --fresh
+python -m src.cli crawl lh-ann --fresh
+python -m src.cli crawl sh-ann --fresh
 ```
 
 ### 📋 다음 단계: 데이터 분석 (크롤링 완료 후)
 
 ```bash
 # 크롤링된 데이터 분석
-python src/cli/analyze_raw_data.py
+python -m src.cli analyze
 ```
 
 ### 3단계: 분석 결과 기반 테이블 설계
@@ -554,6 +808,31 @@ open http://localhost:3000
 
 ## 📝 변경 로그
 
+### v1.5.1 (2025-01-15) - 테이블 데이터 최적화
+
+#### 🔧 개선사항
+
+- **테이블 중복 제거**: `info_table_csv`와 `occupancy_table_csv` 중복 문제 해결
+- **occupancy 테이블만 저장**: 입주현황 테이블만 CSV로 저장하여 데이터 일관성 향상
+- **저장 공간 절약**: 불필요한 info 테이블 생성 제거로 디스크 사용량 최적화
+- **데이터 정합성**: 동일한 정보가 여러 테이블에 중복 저장되는 문제 해결
+
+### v1.5.0 (2025-01-15) - src.cli 통합 아키텍처
+
+#### ✨ 새로운 기능
+
+- **src.cli 통합**: 모든 크롤링을 `src.cli` 모듈로 통합 관리
+- **main.py 간소화**: `main.py`가 `src.cli` 모듈들을 호출하는 방식으로 변경
+- **일관된 실행 방식**: `python -m src.cli` 명령어로 모든 기능 실행
+- **직접 CLI 실행**: `python -m src.cli` 방식으로 개별 모듈 실행 가능
+
+#### 🔧 개선사항
+
+- **코드 중복 제거**: `main.py`에서 중복된 크롤링 로직 제거
+- **유지보수성 향상**: `src.cli` 모듈에서 비즈니스 로직 관리
+- **확장성 향상**: 새로운 CLI 모듈 추가 시 `main.py` 수정 최소화
+- **일관된 사용법**: README의 모든 명령어가 `python -m src.cli` 방식으로 통일
+
 ### v1.4.0 (2025-01-15) - Docker & PostgreSQL 아키텍처
 
 #### ✨ 새로운 기능
@@ -607,6 +886,28 @@ open http://localhost:3000
 
 - 텍스트 파일이 생성되기 전에 접근하려던 문제 해결
 - `_extract_platform_specific_fields` 메서드에 `detail_text` 매개변수 추가
+
+### v1.2.0 (2025-09-18) - API 데이터 수집 시스템 구축
+
+#### ✨ 새로운 기능
+
+- **API 데이터 수집**: 서울 열린데이터광장 API 통합
+- **로컬데이터 포털**: 로컬데이터 포털 API 지원
+- **CLI 명령어**: `data_collection api` 명령어로 API 데이터 수집
+- **자동 저장**: CSV 형식으로 데이터 자동 저장
+- **환경변수 지원**: `.env` 파일을 통한 API 키 관리
+
+#### 🔧 개선사항
+
+- **Import 오류 해결**: 상대 import 문 수정
+- **경로 문제 해결**: 데이터 저장 경로 정규화
+- **에러 처리**: XML 응답 및 API 오류 처리 개선
+- **문서화**: README 업데이트 및 설치 가이드 추가
+
+#### 📊 수집 가능한 데이터
+
+- **서울 열린데이터**: 지하철역, 약국, 어린이집, 학교, 공원 정보
+- **로컬데이터 포털**: 변동분 데이터 (API 권한 필요)
 
 ### v1.1.0 (2025-01-10) - 크롤링 기능 개선
 
