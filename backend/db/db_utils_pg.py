@@ -283,10 +283,10 @@ def upsert_school(school_data):
         result = conn.execute(text(UPSERT_SQL), school_data).fetchone()
         return result[0] if result else None
 
-def log_data_ingestion(data_source, file_name, record_count, status, error_message=None):
+def log_data_collection(data_source, file_name, record_count, status, error_message=None):
     """데이터 수집 로그 기록"""
     LOG_SQL = """
-    INSERT INTO public_data_ingest_logs (
+    INSERT INTO public_data_collection_logs (
         data_source, file_name, record_count, status, error_message
     ) VALUES (
         :data_source, :file_name, :record_count, :status, :error_message

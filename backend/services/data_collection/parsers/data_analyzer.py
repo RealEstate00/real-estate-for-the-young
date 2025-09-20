@@ -16,8 +16,8 @@ class RawDataAnalyzer:
     def __init__(self, data_root: str = None):
         if data_root is None:
             # backend 루트 기준으로 data/raw 경로 설정 (분석할 데이터 위치)
-            # data_analyzer.py -> parsers -> services -> ingestion -> backend
-            self.data_root = Path(__file__).parent.parent.parent.parent.parent / "backend" / "data" / "raw"
+            # data_analyzer.py -> parsers -> services -> data_collection -> backend
+            self.data_root = Path(__file__).parent.parent.parent.parent.parent / "data" / "raw"
         else:
             self.data_root = Path(data_root)
         self.platforms = []

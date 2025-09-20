@@ -22,7 +22,7 @@ from backend.services.data_collection.curated.normalizer import DataNormalizer
 from backend.services.data_collection.curated.db_loader import NormalizedDataLoader
 from backend.db.db_utils_pg import get_engine
 
-HELP = """data_collection normalized <command> [args]
+HELP = """data-collection normalized <command> [args]
 
 Commands:
   process              최근 날짜의 모든 raw 데이터를 정규화
@@ -31,10 +31,10 @@ Commands:
   process --db              정규화 후 DB에 저장
 
 Examples:
-  data_collection normalized process
-  data_collection normalized process --platform sohouse
-  data_collection normalized process --date 2025-09-15
-  data_collection normalized process --db
+  data-collection normalized process
+  data-collection normalized process --platform sohouse
+  data-collection normalized process --date 2025-09-15
+  data-collection normalized process --db
 """
 
 def find_latest_raw_data(platform: str = None, date: str = None) -> List[Path]:
@@ -96,7 +96,7 @@ def get_normalized_output_path(raw_file: Path) -> Path:
         raise ValueError(f"플랫폼명 또는 날짜를 추출할 수 없습니다: {raw_file}")
     
     # backend/data/normalized/날짜/플랫폼명/ 구조로 생성
-    output_path = Path("backend/data/normalized") / date_str / platform_name
+    output_path = Path("backend") / "data" / "normalized" / date_str / platform_name
     output_path.mkdir(parents=True, exist_ok=True)
     
     return output_path
@@ -202,6 +202,13 @@ def process_latest_data(platform: str = None, date: str = None, save_to_db: bool
     return success_count > 0
 
 def main():
+    # 환경 변수 설정 (기본값)
+    import os
+    os.environ.setdefault("PG_USER", "postgres")
+    os.environ.setdefault("PG_PASSWORD", "post1234")
+    os.environ.setdefault("PG_DB", "rey")
+    os.environ.setdefault("DATABASE_URL", "postgresql+psycopg://postgres:post1234@localhost:5432/rey")
+    
     parser = argparse.ArgumentParser(description="정규화 CLI")
     parser.add_argument("command", choices=["process"], 
                        help="실행할 명령어")

@@ -2,21 +2,25 @@
 SeoulHousingAssistBot/
 ├── backend/                     # 백엔드 (Python)
 │   ├── services/               # 서비스 레이어
-│   │   └── ingestion/          # 데이터 수집 서비스
+│   │   └── data_collection/    # 데이터 수집 서비스
 │   │       ├── cli/            # CLI 명령어
 │   │       │   ├── __main__.py # 메인 CLI 진입점
 │   │       │   ├── api_cli.py  # API 수집 CLI
 │   │       │   └── crawl_platforms_raw.py # 크롤링 CLI
-│   │       ├── platform_crawler/       # 크롤링 서비스
+│   │       ├── crawlers/       # 크롤링 서비스
 │   │       │   ├── base.py     # 기본 크롤러 클래스
 │   │       │   ├── so.py       # 사회주택 크롤러
 │   │       │   ├── co.py       # 공동체주택 크롤러
 │   │       │   ├── youth.py    # 청년주택 크롤러
 │   │       │   ├── sh.py       # SH 공고 크롤러
 │   │       │   └── lh.py       # LH 공고 크롤러
-│   │       ├── public_api/     # 공공 API 수집
-│   │       │   ├── localdata/
-│   │       │   ├── openseoul/
+│   │       ├── public-api/       # 공공 API 수집
+│   │       │   ├── run.py      # API 실행 스크립트
+│   │       │   ├── api_client.py # API 클라이언트
+│   │       │   ├── config.py   # API 설정
+│   │       │   ├── pipeline.py # 데이터 파이프라인
+│   │       │   ├── transform.py # 데이터 변환
+│   │       │   └── db.py       # 데이터 저장
 │   │       ├── parsers/        # 데이터 파싱
 │   │       │   ├── parsers.py      # HTML/JSON 파싱 (주택 공고 데이터)
 │   │       │   └── data_analyzer.py # RAW 데이터 분석 및 통계

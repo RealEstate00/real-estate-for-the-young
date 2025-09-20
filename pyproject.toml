@@ -14,5 +14,6 @@ where = ["."]
 include = ["backend*"]    # discover backend, backend.services, ...
 
 [project.scripts]
-data_collection = "backend.services.data_collection.cli.__main__:main"
-sha-db = "backend.db.db_manager:main"
+data-collection = "backend.services.data_collection.cli.__main__:main"
+data-db = "backend.db.db_manager:main"
+data-load = "backend.services.data_collection.cli.load_normalized_data:main"

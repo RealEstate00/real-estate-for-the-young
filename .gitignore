@@ -1,8 +1,17 @@
-# Byte-compiled / optimized / DLL files
-__pycache__/
-*.py[cod]
-*$py.class
-*.pyc
+# Created by https://www.toptal.com/developers/gitignore/api/python,macos,windows
+# Edit at https://www.toptal.com/developers/gitignore?templates=python,macos,windows
+
+### macOS ###
+# General
+.DS_Store
+.AppleDouble
+.LSOverride
+.history
+
+# Icon must end with two \r
+Icon
+
+
 # Thumbnails
 ._*
 
@@ -31,7 +40,6 @@ Temporary Items
 __pycache__/
 *.py[cod]
 *$py.class
-*.pyc
 
 # C extensions
 *.so
@@ -151,7 +159,6 @@ celerybeat.pid
 
 # Environments
 .env
-.venv
 .venv/
 env/
 venv/
@@ -211,6 +218,7 @@ ehthumbs_vista.db
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
 # Dump file
 *.stackdump
 
@@ -231,9 +239,14 @@ $RECYCLE.BIN/
 
 # data outputs // 크롤링 파일 제외
 backend/data/raw/
-data/
-!data/sample/**
-pdf/
+backend/data/rtms/
+backend/data/public_data/
+backend/data/public_api/
+backend/data/normalized/
+
+!backend/data/*/README.md
+!backend/data/*/schema.*
+!backend/data/*/example.*
 
 # Windows shortcuts
 *.lnk
