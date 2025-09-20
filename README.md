@@ -96,42 +96,173 @@ cp backend/env.example .env
 git clone <repository-url>
 cd SeoulHousingAssistBot
 
-# 2. uv로 가상환경 생성 및 패키지 설치
+# 2. uv 설치 (아직 설치하지 않은 경우)
+# macOS/Linux:
+curl -LsSf https://astral.sh/uv/install.sh | sh
+# Windows (PowerShell):
+powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
+
+# 3. 가상환경 생성 및 패키지 설치
 uv venv --python 3.12
 source .venv/bin/activate  # macOS/Linux
+# Windows: .venv\Scripts\Activate.ps1
 uv pip install -e .
 
-# 3. 환경변수 설정
-cp backend/env.example .env
-# .env 파일 편집하여 API 키 설정
+# 4. Playwright 브라우저 설치 (크롤링용)
+playwright install chromium
 
-# 4. API 데이터 수집 테스트
-data_collection api load --csv
+# 5. PostgreSQL 드라이버 설치 (DB 저장 시)
+uv pip install -r backend/requirements.txt
+
+# 6. 데이터베이스 테이블 생성
+data-db create
+
+# 7. 공공시설 데이터 로드
+data-load infra
+
+# 8. 테스트 실행
+data-db test
+data-db list
 ```
 
-## 📋 상세 설치 가이드
+### 🪟 Windows 사용자
+
+```powershell
+# PowerShell을 관리자 권한으로 실행 후:
+
+# 1. 저장소 클론
+git clone <repository-url>
+cd SeoulHousingAssistBot
+
+# 2. 가상환경 생성 및 활성화
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+
+# 3. 패키지 설치
+pip install -e .
+pip install -r backend/requirements.txt
+
+# 4. Playwright 브라우저 설치
+playwright install --with-deps chromium
+
+# 5. 데이터베이스 테이블 생성
+data-db create
+
+# 6. 공공시설 데이터 로드
+data-load infra
+
+# 7. 테스트 실행
+data-db test
+data-db list
+```
+
+## 📋 사용법
+
+### 🔄 데이터 수집 및 정규화
 
 ```bash
 # 서울 열린데이터 수집 (모든 서비스 - 7개)
-data_collection api load --csv
+data-collection api load --csv --fresh
 # 수집 데이터: 지하철역, 약국, 어린이집, 초등학교, 학교, 대학교, 공원
+# 수집 데이터의 중복없이 진행을 위하여 --fresh 사용
 
 # 특정 서비스만 수집
-data_collection api public --csv    # 지하철역 정보만 (SearchSTNBySubwayLineInfo)
-data_collection api housing --csv   # 공원 정보만 (SearchParkInfoService)
+data-collection api public --csv    # 지하철역 정보만 (SearchSTNBySubwayLineInfo)
+data-collection api housing --csv   # 공원 정보만 (SearchParkInfoService)
 
 # CSV 저장 없이 수집만 (데이터는 메모리에만 로드)
-data_collection api load
-data_collection api public
-data_collection api housing
+data-collection api load
+data-collection api public
+data-collection api housing
 
 # 로컬데이터 포털 수집 (API 권한 필요)
-data_collection api load --source localdata --csv
+data-collection api load --source localdata --csv
+```
+
+### 🏠 주택 공고 크롤링
+
+```bash
+# 사회주택 공고 크롤링
+data-collection crawl sohouse
+
+# 공동체주택 공고 크롤링
+data-collection crawl cohouse
+
+# 청년안심주택 공고 크롤링
+data-collection crawl youth
+
+# LH공사 공고 크롤링
+data-collection crawl lh
+
+# SH공사 공고 크롤링
+data-collection crawl sh
+```
+
+### 📊 데이터 정규화 및 DB 저장
+
+#### 🚀 전체 실행 흐름 (권장)
+
+```bash
+# 가상환경 활성화 (uv 사용 시)
+source .venv/bin/activate
+
+# 1. 데이터 크롤링
+data-collection crawl all --fresh
+
+# 2. 데이터 정규화 (JSON 파일 생성)
+data-collection normalized process --platform all
+
+# 3. DB 스키마 생성 (최초 1회만)
+data-db create
+
+# 4. 정규화된 데이터를 DB에 적재
+data-load --data-dir backend/data/normalized --verbose
+```
+
+#### 📋 단계별 상세 실행 방법
+
+#### 1단계: 데이터 정규화 (JSON 파일 생성)
+
+```bash
+# 가상환경 활성화
+source .venv/bin/activate
+
+# 정규화만 실행 (JSON 파일로 저장)
+data-collection normalized process --platform cohouse
+data-collection normalized process --platform sohouse
+data-collection normalized process --platform youth
+
+# 모든 플랫폼 정규화
+data-collection normalized process --platform all
+```
+
+#### 2단계: DB 스키마 설정 (최초 1회)
+
+```bash
+# PostgreSQL 스키마 생성 및 테이블 생성
+data-db create
+```
+
+#### 3단계: 정규화된 데이터를 DB에 적재
+
+```bash
+# 정규화된 데이터를 PostgreSQL에 적재
+data-load --data-dir backend/data/normalized
+
+# 특정 디렉토리 지정
+data-load --data-dir backend/data/normalized/2025-09-19__20250919T093742
+
+# 상세 로그와 함께 실행
+data-load --data-dir backend/data/normalized --verbose
+
+# 특정 DB URL 지정
+data-load --data-dir backend/data/normalized --db-url "postgresql+psycopg://postgres:post1234@localhost:5432/rey"
+
 ```
 
 #### 📊 수집되는 데이터 상세
 
-**`data_collection api load --csv` 실행 시:**
+**`data-collection api load --csv` 실행 시:**
 
 1. **SearchSTNBySubwayLineInfo** - 지하철역 정보 (799건)
 2. **TbPharmacyOperateInfo** - 약국 운영 정보 (1000건)
@@ -141,74 +272,123 @@ data_collection api load --source localdata --csv
 6. **SebcCollegeInfoKor** - 대학교 정보 (64건)
 7. **SearchParkInfoService** - 공원 정보 (131건)
 
-**저장 위치:** `backend/data/public-api/openseoul/`
+**저장 위치:** `backend/data/api_pull/openseoul/`
 
 ### 크롤링 데이터 수집
 
+**⚠️ 크롤링 실행 전 Playwright 브라우저 설치 필요:**
+
+```bash
+playwright install chromium
+```
+
 ```bash
 # 사회주택 크롤링
-data_collection crawl sohouse --fresh
+data-collection crawl sohouse --fresh
 
 # 공동체주택 크롤링
-data_collection crawl cohouse --fresh
+data-collection crawl cohouse --fresh
 
 # 청년주택 크롤링
-data_collection crawl youth --fresh
+data-collection crawl youth --fresh
+
+# 행복주택 크롤링
+data-collection crawl happy --fresh
+
+# LH 공고 크롤링
+data-collection crawl lh-ann --fresh
+
+# SH 공고 크롤링
+data-collection crawl sh-ann --fresh
 
 # 모든 플랫폼 크롤링
-data_collection crawl all --fresh
+data-collection crawl all --fresh
 ```
+
+**Windows에서 크롤링 실행 시 주의사항:**
+
+- PowerShell을 관리자 권한으로 실행하세요
+- Windows Defender가 브라우저 실행을 차단할 수 있으니 허용해주세요
+- 크롤링 중 브라우저 창이 잠깐 나타날 수 있습니다 (정상 동작)
 
 ### 데이터 분석 및 변환
 
 ```bash
 # 크롤링된 데이터 정규화 (분석)
-data_collection normalized process
+data-collection normalized process
 
 # 특정 플랫폼만 정규화
-data_collection normalized process --platform sohouse
+data-collection normalized process --platform sohouse
 
 # 특정 날짜만 정규화
-data_collection normalized process --date 2025-09-18
+data-collection normalized process --date 2025-09-18
 
 # 정규화 후 DB에 저장
-data_collection normalized process --db
+data-collection normalized process --db
 
 # 전체 프로세스 (크롤링 → 정규화)
-data_collection crawl all --fresh && data_collection normalized process
+data-collection crawl all --fresh && data-collection normalized process
 ```
 
 ### 데이터베이스 관리
 
+#### **CLI 명령어**
+
 ```bash
 # 데이터베이스 테이블 생성
-sha-db create
+data-db create
 
 # 데이터베이스 연결 테스트
-sha-db test
+data-db test
 
 # 모든 테이블 목록 확인
-sha-db list
+data-db list
 
 # 특정 테이블 구조 확인
-sha-db structure bus_stops
+data-db structure bus_stops
 
 # PostgreSQL로 데이터 마이그레이션
-sha-db migrate-pg
+data-db migrate-pg
 
 # MySQL에 데이터 로드
-sha-db load-mysql
+data-db load-mysql
 
 # 데이터베이스 초기화 (주의!)
-sha-db reset
+data-db reset
 ```
+
+#### **DBeaver를 통한 데이터베이스 관리**
+
+**스키마 및 테이블 확인:**
+
+1. DBeaver에서 `rey` 데이터베이스 연결
+2. 좌측 트리에서 `Schemas` 확장
+3. `housing` 스키마: 주택 관련 테이블들
+   - `platforms`: 플랫폼 정보
+   - `addresses`: 주소 정보
+   - `notices`: 공고 정보
+   - `units`: 유닛 정보
+   - `unit_features`: 유닛 특징
+   - `notice_tags`: 공고 태그
+   - `user_events`: 사용자 이벤트
+4. `facilities` 스키마: 공공시설 관련 테이블들
+   - `facility_categories`: 시설 카테고리
+   - `public_facilities`: 공공시설 정보
+   - `subway_stations`: 지하철역 정보
+   - `housing_facility_distances`: 주택-시설 거리
+
+**데이터 확인 및 수정:**
+
+- 테이블 우클릭 → "데이터 보기"로 데이터 확인
+- SQL 편집기에서 직접 쿼리 실행 가능
+- 테이블 구조 확인 및 수정 가능
 
 ## 📁 데이터 저장 위치
 
 ### API 데이터
 
-- **서울 열린데이터**: `backend/data/public-api/openseoul/`
-- **로컬데이터 포털**: `backend/data/public-api/localdata/`
+- **서울 열린데이터**: `backend/data/api_pull/openseoul/`
+- **로컬데이터 포털**: `backend/data/api_pull/localdata/`
 
 ### 크롤링 데이터
 
@@ -230,6 +410,42 @@ sha-db reset
 2. API 키 발급 신청
 3. `.env` 파일에 `LOCALDATA_API_KEY` 설정
 
+### 주소 정규화 API (선택사항)
+
+정확한 주소 정규화를 위한 행정안전부 주소 API:
+
+1. [공공데이터포털](https://www.data.go.kr/data/15057017/openapi.do) 회원가입
+2. "실시간 주소정보 조회(검색API)" 신청
+3. `.env` 파일에 `JUSO_API_KEY` 설정
+
+```bash
+# .env 파일에 추가
+JUSO_API_KEY=your_juso_api_key_here
+```
+
+**참고**: API 키가 없어도 정규식으로 기본적인 주소 정규화가 가능합니다.
+
+### 데이터베이스 설정 (DB 저장 시 필수)
+
+`.env` 파일에 다음 설정을 추가하세요:
+
+```bash
+# PostgreSQL 설정
+PG_HOST=localhost
+PG_PORT=5432
+PG_USER=postgres
+PG_PASSWORD=post1234
+PG_DB=rey
+```
+
+**설정 가이드:**
+
+- `PG_HOST`: PostgreSQL 서버 주소 (기본값: localhost)
+- `PG_PORT`: PostgreSQL 포트 (기본값: 5432)
+- `PG_USER`: 데이터베이스 사용자명 (기본값: postgres)
+- `PG_PASSWORD`: 데이터베이스 비밀번호 (설치 시 설정한 값)
+- `PG_DB`: 데이터베이스명 (기본값: rey)
+
 ## 🛠️ 문제 해결
 
 ### Import 오류 해결
@@ -248,10 +464,59 @@ pip install -e .
 - API 키가 올바르게 설정되었는지 확인
 - API 키 권한이 있는지 확인
 
+### 데이터베이스 연결 오류
+
+**PostgreSQL 연결 실패:**
+
+```bash
+# PostgreSQL 서비스 상태 확인
+# macOS:
+brew services list | grep postgresql
+
+# Ubuntu/Debian:
+sudo systemctl status postgresql
+
+# Windows:
+# 서비스 관리자에서 PostgreSQL 서비스 확인
+```
+
+**psycopg2 설치 오류:**
+
+```bash
+# macOS (Homebrew):
+brew install postgresql
+export PATH="/opt/homebrew/bin:$PATH"
+
+# Ubuntu/Debian:
+sudo apt install libpq-dev python3-dev
+
+# Windows:
+# Visual C++ Build Tools 설치 후 재시도
+```
+
+**데이터베이스 권한 오류:**
+
+```bash
+# PostgreSQL 접속 후 권한 확인
+psql -U postgres -d rey
+\du  # 사용자 목록 확인
+\l   # 데이터베이스 목록 확인
+```
+
 ### 데이터 저장 경로 오류
 
 - `backend/data/` 디렉토리가 존재하는지 확인
 - 쓰기 권한이 있는지 확인
+
+### Playwright 브라우저 오류
+
+```bash
+# 브라우저 재설치
+playwright install --force chromium
+
+# 의존성과 함께 설치 (Linux)
+playwright install --with-deps chromium
+```
 
 ## 📊 수집 가능한 데이터
 
@@ -277,9 +542,9 @@ pip install -e .
 
 ```bash
 # 크롤링 모듈 직접 실행
-python -m backend.services.data_collection.cli.crawl_platforms sohouse --fresh
-python -m backend.services.data_collection.cli.crawl_platforms cohouse --fresh
-python -m backend.services.data_collection.cli.crawl_platforms youth --fresh
+python -m backend.services.data_collection.cli.crawl_platforms_raw sohouse --fresh
+python -m backend.services.data_collection.cli.crawl_platforms_raw cohouse --fresh
+python -m backend.services.data_collection.cli.crawl_platforms_raw youth --fresh
 
 # API 수집 모듈 직접 실행
 python -m backend.services.data_collection.public-api.run --source seoul --service all --csv
@@ -288,12 +553,12 @@ python -m backend.services.data_collection.public-api.run --source localdata --c
 # 정규화 CLI 직접 실행
 python -m backend.services.data_collection.cli.normalized_cli process
 
-# 데이터베이스 관리 (권장: sha-db 사용)
-sha-db create              # 데이터베이스 테이블 생성
-sha-db list                # 모든 테이블 목록
-sha-db test                # 데이터베이스 연결 테스트
-sha-db migrate-pg          # PostgreSQL로 데이터 마이그레이션
-sha-db load-mysql          # MySQL에 데이터 로드
+# 데이터베이스 관리 (권장: data-db 사용)
+data-db create              # 데이터베이스 테이블 생성
+data-db list                # 모든 테이블 목록
+data-db test                # 데이터베이스 연결 테스트
+data-db migrate-pg          # PostgreSQL로 데이터 마이그레이션
+data-db load-mysql          # MySQL에 데이터 로드
 ```
 
 ## 📁 프로젝트 구조
@@ -314,7 +579,7 @@ SeoulHousingAssistBot/
 │   │       │   ├── youth.py    # 청년주택 크롤러
 │   │       │   ├── sh.py       # SH 공고 크롤러
 │   │       │   └── lh.py       # LH 공고 크롤러
-│   │       ├── public-api/       # 공공 API 수집
+│   │       ├── api_pull/       # 공공 API 수집
 │   │       │   ├── run.py      # API 실행 스크립트
 │   │       │   ├── api_client.py # API 클라이언트
 │   │       │   ├── config.py   # API 설정
@@ -324,7 +589,7 @@ SeoulHousingAssistBot/
 │   │       ├── parsers/        # 데이터 파싱
 │   │       │   ├── parsers.py      # HTML/JSON 파싱 (주택 공고 데이터)
 │   │       │   └── data_analyzer.py # RAW 데이터 분석 및 통계
-│   │       └── normalized/     # 데이터 정제
+│   │       └── curated/        # 데이터 정제
 │   │           └── normalizer.py # 데이터 정규화
 │   ├── db/                     # 데이터베이스
 │   │   ├── postgresql/         # PostgreSQL 스키마
@@ -334,19 +599,19 @@ SeoulHousingAssistBot/
 │   │   │   ├── sohouse/       # 사회주택 데이터
 │   │   │   ├── cohouse/       # 공동체주택 데이터
 │   │   │   └── youth/         # 청년주택 데이터
-│   │   └── public-api/          # API 수집 데이터
+│   │   └── api_pull/          # API 수집 데이터
 │   │       ├── openseoul/     # 서울 열린데이터
 │   │       └── localdata/     # 로컬데이터 포털
 │   ├── logs/                   # 로그 파일
 │   ├── docs/                   # 문서
 │   ├── tests/                  # 테스트
 │   ├── config/                 # 설정 파일
-│   └── src/                    # 소스 코드
-│       └── cli/                # CLI 모듈
-│           ├── __main__.py     # 메인 CLI 진입점
-│           ├── crawl_platforms.py  # 크롤링 CLI
-│           ├── analyze_raw_data.py # 분석 CLI
-│           └── migrate_database.py # 마이그레이션 CLI
+│   ├── src/                    # 소스 코드
+│   │   └── cli/                # CLI 모듈
+│   │       ├── __main__.py     # 메인 CLI 진입점
+│   │       ├── crawl_platforms.py  # 크롤링 CLI
+│   │       ├── analyze_raw_data.py # 분석 CLI
+│   │       └── migrate_database.py # 마이그레이션 CLI
 │   ├── requirements.txt        # Python 의존성
 │   └── Dockerfile              # 백엔드 Docker 이미지
 ├── frontend/                    # 프론트엔드 (React)
@@ -390,26 +655,70 @@ SeoulHousingAssistBot/
 
 ## 🚀 사용법
 
-### 1. RAW 크롤링 (현재 우선순위)
+### 📋 빠른 시작
 
 ```bash
-# 모든 플랫폼 크롤링 완료
-python -m src.cli crawl all --fresh
+# 1. 가상환경 활성화
+source .venv/bin/activate
 
-# 또는 개별 실행
-python -m src.cli crawl sohouse --fresh
-python -m src.cli crawl cohouse --fresh
-python -m src.cli crawl youth --fresh
-python -m src.cli crawl happy --fresh
-python -m src.cli crawl lh-ann --fresh
-python -m src.cli crawl sh-ann --fresh
+# 2. 데이터베이스 테이블 생성
+data-db create
 
-# 공공데이터 크롤링
-python scripts/crawl_public_raw.py rtms_all --from 2020 --to 2024
-python scripts/crawl_public_raw.py landprice_files
+# 3. 공공시설 데이터 로드
+data-load infra
+
+# 4. 주택 데이터 로드 (정규화된 데이터가 있는 경우)
+data-load housing --data-dir backend/data/normalized
 ```
 
-### 1.1. SO/CO 크롤러 통합 사용법
+### 🔧 주요 명령어
+
+#### 데이터베이스 관리 (`data-db`)
+
+```bash
+data-db create              # 테이블 생성
+data-db drop                # 모든 테이블 삭제 (주의!)
+data-db reset               # 데이터베이스 초기화 (삭제 + 생성)
+data-db list                # 테이블 목록 및 현황
+data-db test                # 데이터베이스 연결 테스트
+data-db structure <table>   # 특정 테이블 구조 확인
+```
+
+#### 데이터 수집 (`data-collection`)
+
+```bash
+# 크롤링
+data-collection crawl --target sohouse --since 2025-01-01
+data-collection crawl --target cohouse
+data-collection crawl --target youth
+
+# API 데이터 수집
+data-collection api load        # 모든 API 데이터
+data-collection api public      # 공공시설 데이터만
+data-collection api housing     # 주택 데이터만
+
+# 데이터 정규화
+data-collection normalized process                    # 최근 데이터 정규화
+data-collection normalized process --platform sohouse # 특정 플랫폼만
+data-collection normalized process --db               # 정규화 후 DB 저장
+```
+
+#### 데이터 로드 (`data-load`)
+
+```bash
+data-load housing --data-dir backend/data/normalized  # 주택 데이터
+data-load rtms --data-dir backend/data/normalized     # RTMS 데이터
+data-load infra                                        # 공공시설 데이터
+data-load all --data-dir backend/data/normalized      # 모든 데이터
+```
+
+### 📊 현재 데이터 현황
+
+- **infra 스키마**: 23,270개 공공시설 + 1,598개 지하철역
+- **housing 스키마**: 76개 공고 + 73개 주소 + 204개 유닛 특징
+- **rtms 스키마**: 3개 거래 데이터
+
+### 🔄 기존 크롤러 사용법 (레거시)
 
 ```python
 # 직접 사용 (권장)
@@ -810,6 +1119,96 @@ open http://localhost:3000
 
 ## 📝 변경 로그
 
+## 🔧 문제 해결
+
+### 자주 발생하는 문제들
+
+#### 1. Playwright 브라우저 설치 오류
+
+**문제:** `playwright install` 실행 시 오류 발생
+
+**해결방법:**
+
+```bash
+# Windows에서 권한 문제 해결
+playwright install --with-deps chromium
+
+# 또는 관리자 권한으로 PowerShell 실행 후
+playwright install chromium
+```
+
+#### 2. Windows에서 크롤링 실행 오류
+
+**문제:** Windows에서 크롤링 시 브라우저 실행 실패
+
+**해결방법:**
+
+1. PowerShell을 관리자 권한으로 실행
+2. Windows Defender에서 브라우저 실행 허용
+3. 방화벽에서 Python 및 브라우저 허용
+
+#### 3. 가상환경 활성화 오류 (Windows)
+
+**문제:** `.venv\Scripts\Activate.ps1` 실행 정책 오류
+
+**해결방법:**
+
+```powershell
+# PowerShell 실행 정책 변경
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+
+# 또는 Command Prompt 사용
+.venv\Scripts\activate.bat
+```
+
+#### 4. API 키 설정 오류
+
+**문제:** API 데이터 수집 시 인증 오류
+
+**해결방법:**
+
+1. `.env` 파일이 프로젝트 루트에 있는지 확인
+2. API 키가 올바르게 설정되었는지 확인
+3. API 키에 따옴표가 없는지 확인
+
+#### 5. 크롤링 데이터 저장 오류
+
+**문제:** 크롤링된 데이터가 저장되지 않음
+
+**해결방법:**
+
+1. `backend/data/` 폴더 권한 확인
+2. 디스크 공간 확인
+3. `--fresh` 옵션으로 기존 데이터 삭제 후 재시도
+
+### 로그 확인 방법
+
+```bash
+# 상세 로그와 함께 실행
+data-collection crawl sohouse --fresh --verbose
+
+# 특정 플랫폼만 테스트
+data-collection crawl sohouse --max-pages 1
+```
+
+## 📝 변경 이력
+
+### v1.6.0 (2025-01-19) - Windows 지원 및 Playwright 통합
+
+#### ✨ 새로운 기능
+
+- **Windows 완전 지원**: PowerShell 및 Command Prompt 지원
+- **Playwright 자동 설치**: 크롤링을 위한 브라우저 자동 설치
+- **Fresh 명령어**: 중복 설치 방지 및 강제 새로 수집 기능
+- **통합 데이터 저장**: 모든 데이터가 `backend/data/` 폴더에 저장
+
+#### 🔧 개선사항
+
+- **크롤러 오류 수정**: 메서드 시그니처 불일치 문제 해결
+- **JSON/이미지 다운로드**: 크롤링 시 모든 데이터 정상 저장
+- **Windows 설치 가이드**: 상세한 Windows 설치 및 실행 가이드
+- **문제 해결 섹션**: 자주 발생하는 문제들의 해결 방법 제공
+
 ### v1.5.1 (2025-01-15) - 테이블 데이터 최적화
 
 #### 🔧 개선사항
@@ -895,7 +1294,7 @@ open http://localhost:3000
 
 - **API 데이터 수집**: 서울 열린데이터광장 API 통합
 - **로컬데이터 포털**: 로컬데이터 포털 API 지원
-- **CLI 명령어**: `data_collection api` 명령어로 API 데이터 수집
+- **CLI 명령어**: `data-collection api` 명령어로 API 데이터 수집
 - **자동 저장**: CSV 형식으로 데이터 자동 저장
 - **환경변수 지원**: `.env` 파일을 통한 API 키 관리
 

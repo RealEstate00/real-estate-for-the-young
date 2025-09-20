@@ -236,15 +236,14 @@ $RECYCLE.BIN/
 backend/data/housing/
 backend/data/rtms/
 backend/data/public_data/
-backend/data/api_pull/
+backend/data/public_api/
 backend/data/normalized/
 
 !backend/data/*/README.md
 !backend/data/*/schema.*
 !backend/data/*/example.*
 
-# data test // 테스트 파일 제외
-backend/test/
+*.csv
 
 # Windows shortcuts
 *.lnk
