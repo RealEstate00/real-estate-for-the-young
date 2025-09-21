@@ -126,7 +126,7 @@ class SoHouseCrawler(BaseCrawler):
         # Let the parser filter aggressively: strip tags/normalize/price-range sanity
         return filter_json_fields_for_sohouse(kv_pairs, platform_specific_fields)
 
-    def _download_images_platform_specific(self, page, output_dir: Path, house_name: str, index: int) -> tuple[list[str], list[str]]:
+    def _download_images_platform_specific(self, page, output_dir: Path, house_name: str, index: int, unit_index: int = 0) -> tuple[list[str], list[str]]:
         """Collect normal images and floor plans from multiple containers/selectors."""
         (output_dir / "floor_plans").mkdir(parents=True, exist_ok=True)
 
