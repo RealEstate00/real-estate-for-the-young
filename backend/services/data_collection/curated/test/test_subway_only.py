@@ -9,7 +9,7 @@ import json
 from datetime import datetime
 
 # 프로젝트 루트를 Python 경로에 추가
-project_root = Path(__file__).parent.parent.parent.parent
+project_root = Path(__file__).parent.parent.parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 from backend.services.data_collection.curated.infra_normalizer import InfraNormalizer
@@ -21,8 +21,8 @@ def test_subway_only():
 
     print("🚇 지하철역 정규화 테스트 시작")
     
-    # 데이터 디렉토리 설정
-    data_dir = Path("backend/data/public-api/openseoul")
+    # 데이터 디렉토리 설정 (프로젝트 루트 기준)
+    data_dir = project_root / "backend/data/public-api/openseoul"
     
     # InfraNormalizer 인스턴스 생성
     normalizer = InfraNormalizer(data_dir)
@@ -36,21 +36,43 @@ def test_subway_only():
     
     print(f"📁 지하철역 파일 로드: {subway_file}")
     
-    # InfraNormalizer의 _normalize_subway_stations 함수 직접 호출
-    print("\n🔄 지하철역 데이터 정규화 시작...")
-    normalizer._normalize_subway_stations(subway_file)
+    # 상위 10개 지하철역만 정규화하도록 수정
+    print("\n🔄 지하철역 데이터 정규화 시작 (상위 10개만)...")
+    
+    # CSV 파일을 먼저 읽어서 상위 10개만 추출
+    import pandas as pd
+    df_stn = pd.read_csv(subway_file, encoding="utf-8", dtype=str)
+    print(f"📊 전체 지하철역 데이터: {len(df_stn)}개")
+    
+    # 상위 10개만 선택
+    df_stn_limited = df_stn.head(20)
+    print(f"🧪 테스트용 지하철역 데이터: {len(df_stn_limited)}개")
+    
+    # 임시 파일로 저장
+    temp_file = subway_file.parent / "temp_subway_limited.csv"
+    df_stn_limited.to_csv(temp_file, index=False, encoding="utf-8")
+    
+    # 제한된 데이터로 정규화
+    normalizer._normalize_subway_stations(temp_file)
+    
+    # 임시 파일 삭제
+    temp_file.unlink()
     
     # 결과 출력
     stations = normalizer.normalized_subway_stations
     print(f"\n📊 정규화 결과:")
     print(f"   - 성공: {len(stations)}개")
     
+    # 서울 내 지하철역만 필터링 (주소가 있는 역들)
+    seoul_stations = [station for station in stations if station['address_raw'] and station['address_raw'].strip()]
+    print(f"🏙️ 서울 내 지하철역: {len(seoul_stations)}개")
+    
     # 처음 10개만 테스트용으로 사용
-    test_stations = stations
+    test_stations = seoul_stations[:10] if seoul_stations else stations[:10]
     print(f"🧪 테스트용 지하철역 데이터: {len(test_stations)}개")
     
-    # JSON 파일로 저장
-    output_dir = Path("backend/data/normalized/test_subway")
+    # JSON 파일로 저장 (프로젝트 루트 기준)
+    output_dir = project_root / "backend/data/normalized/test_subway"
     output_dir.mkdir(parents=True, exist_ok=True)
     
     # subway_stations.json 저장

@@ -63,6 +63,10 @@ def preprocess_address(addr_raw: str) -> str:
     # 2. 지번 주소는 그대로 유지 (JUSO API가 지번 주소도 처리 가능)
     # 다만 불필요한 정보만 제거
     
+    # 2-1. 지하철역 관련 전처리 (가장 먼저 처리)
+    # 역명과 괄호 제거 (예: "신설동역(2호선)" → "")
+    addr_raw = re.sub(r'\s+[가-힣]+역\([^)]*\)', '', addr_raw).strip()
+    
     # 3. 불필요한 층수 정보 제거
     addr_raw = re.sub(r'\s+\d+\s*층.*$', '', addr_raw)
     addr_raw = re.sub(r'\s+전층.*$', '', addr_raw)

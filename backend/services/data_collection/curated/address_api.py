@@ -90,12 +90,40 @@ class AddressAPI:
         # reverse=True일 때는 도로명주소 → 지번주소 변환을 위한 추가 파라미터
         if reverse:
             params["admCd"] = "Y"  # 행정구역코드 포함
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        logger.info(f"🏠 JUSO API 요청: {keyword}")
+        logger.info(f"📋 JUSO API 요청 파라미터: {params}")
+        
         resp = self.session.get(self.base_url, params=params, timeout=self.timeout)
+        logger.info(f"🔍 JUSO API 응답 상태: {resp.status_code}")
+        logger.info(f"📄 JUSO API 전체 응답 내용:")
+        logger.info(f"{resp.text}")
+        
         resp.raise_for_status()
         data = resp.json()
         ok, msg = _check_api_ok(data)
         if not ok:
+            logger.error(f"❌ JUSO API 오류: {msg}")
+            logger.error(f"📄 전체 응답: {data}")
             raise AddressNormalizerError(f"Juso API error: {msg}")
+        
+        results_count = len(data.get('results', {}).get('juso', []))
+        logger.info(f"✅ JUSO API 성공: {results_count}개 결과")
+        
+        # 결과 상세 정보 로깅
+        if results_count > 0:
+            first_result = data.get('results', {}).get('juso', [])[0]
+            logger.info(f"📋 첫 번째 결과 상세:")
+            logger.info(f"   - 도로명주소: {first_result.get('roadAddr', 'N/A')}")
+            logger.info(f"   - 지번주소: {first_result.get('jibunAddr', 'N/A')}")
+            logger.info(f"   - 시도: {first_result.get('siNm', 'N/A')}")
+            logger.info(f"   - 시군구: {first_result.get('sggNm', 'N/A')}")
+            logger.info(f"   - 읍면동: {first_result.get('emdNm', 'N/A')}")
+            logger.info(f"   - 법정동코드: {first_result.get('bcode', 'N/A')}")
+            logger.info(f"   - 좌표: ({first_result.get('entY', 'N/A')}, {first_result.get('entX', 'N/A')})")
+        
         return data
 
     def normalize_one(self, address: str, retries: int = 2, backoff: float = 0.3, reverse: bool = False) -> dict:

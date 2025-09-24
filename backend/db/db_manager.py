@@ -34,11 +34,34 @@ def create_tables():
     """테이블 생성"""
     print("[On Progress]  데이터베이스 테이블 생성 중...")
     try:
+        # 1. 스키마 생성
+        create_schemas()
+        # 2. 테이블 생성
         setup_schema()
         print("[COMPLETE] 테이블 생성 완료!")
         return True
     except Exception as e:
         print(f"[FAILED] 테이블 생성 실패: {e}")
+        return False
+
+def create_schemas():
+    """필요한 스키마들 생성"""
+    print("📁 스키마 생성 중...")
+    engine = get_engine()
+    
+    try:
+        with engine.connect() as conn:
+            # 스키마 생성
+            schemas = ['infra', 'housing', 'rtms']
+            for schema in schemas:
+                conn.execute(text(f"CREATE SCHEMA IF NOT EXISTS {schema}"))
+                print(f"✅ {schema} 스키마 생성 완료")
+            
+            conn.commit()
+        print("📁 모든 스키마 생성 완료!")
+        return True
+    except Exception as e:
+        print(f"❌ 스키마 생성 실패: {e}")
         return False
 
 def drop_tables():

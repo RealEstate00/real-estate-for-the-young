@@ -8,9 +8,13 @@
 import pandas as pd
 from pathlib import Path
 import os
-from typing import List, Dict, Optional, Any
+import re
+import requests
+import time
+from typing import List, Dict, Optional, Any, Tuple
 import logging
 from dotenv import load_dotenv
+import chardet
 
 # 환경변수 로드
 load_dotenv()
@@ -18,6 +22,234 @@ load_dotenv()
 from backend.services.data_collection.curated.address_api import normalize_address, AddressNormalizerError
 
 logger = logging.getLogger(__name__)
+
+# ----- 새로운 API 클라이언트 클래스들 -----
+class EmdCodeAPI:
+    """법정동 코드 API 클라이언트"""
+    
+    def __init__(self, api_key: str):
+        self.api_key = api_key
+        self.base_url = "http://apis.data.go.kr/1741000/StanReginCd/getStanReginCdList"
+    
+    def get_emd_code(self, address_nm: str) -> Optional[str]:
+        """정규화된 주소로 법정동 코드 조회 (앞 3단어만 사용)"""
+        if not address_nm:
+            return None
+        
+        # address_nm에서 앞 3단어만 파싱 (예: "서울특별시 종로구 숭인동" -> "서울특별시 종로구 숭인동")
+        address_parts = address_nm.strip().split()
+        if len(address_parts) >= 3:
+            search_address = ' '.join(address_parts[:3])  # 앞 3단어만 사용
+        else:
+            search_address = address_nm  # 3단어 미만이면 전체 사용
+            
+        logger.info(f"법정동 코드 조회: '{address_nm}' -> '{search_address}'")
+            
+        try:
+            params = {
+                'ServiceKey': self.api_key,
+                'type': 'xml',
+                'pageNo': 1,
+                'numOfRows': 3,
+                'flag': 'Y',
+                'locatadd_nm': search_address
+            }
+            
+            response = requests.get(self.base_url, params=params, timeout=10)
+            logger.info(f"🔍 법정동 API 응답 상태: {response.status_code}")
+            logger.info(f"📄 법정동 API 전체 응답 내용:")
+            logger.info(f"{response.text}")
+            
+            response.raise_for_status()
+            
+            # XML 파싱하여 region_cd 추출
+            import xml.etree.ElementTree as ET
+            root = ET.fromstring(response.content)
+            
+            # region_cd 찾기
+            found_codes = []
+            for item in root.findall('row'):
+                region_cd = item.find('region_cd')
+                if region_cd is not None and region_cd.text:
+                    found_codes.append(region_cd.text)
+                    logger.info(f"✅ 법정동 코드 발견: {region_cd.text}")
+            
+            if found_codes:
+                logger.info(f"🎯 법정동 코드 조회 성공: {found_codes[0]} (총 {len(found_codes)}개 발견)")
+                return found_codes[0]
+            
+            logger.warning(f"❌ 법정동 코드를 찾을 수 없음")
+            logger.warning(f"📄 전체 응답 내용: {response.text}")
+            return None
+            
+        except Exception as e:
+            logger.error(f"법정동 코드 조회 실패: {address_nm} - {e}")
+            logger.error(f"요청 URL: {self.base_url}")
+            logger.error(f"요청 파라미터: {params}")
+            return None
+
+class ToLolaAPI:
+    """좌표 변환 API 클라이언트"""
+    
+    def __init__(self, api_key: str):
+        self.api_key = api_key
+        self.base_url = "https://api.vworld.kr/req/address"
+    
+    def get_coordinates(self, address: str, address_type: str = 'ROAD') -> Tuple[Optional[float], Optional[float]]:
+        """주소를 좌표로 변환"""
+        if not address:
+            return None, None
+            
+        try:
+            params = {
+                'service': 'address',
+                'request': 'getcoord',
+                'version': '2.0',
+                'crs': 'epsg:4326',
+                'address': address,
+                'refine': 'true',
+                'simple': 'false',
+                'format': 'xml',
+                'type': address_type,
+                'key': self.api_key
+            }
+            
+            logger.info(f"🌍 좌표 변환 API 요청: {address}")
+            logger.info(f"📋 좌표 변환 API 요청 파라미터: {params}")
+            
+            response = requests.get(self.base_url, params=params, timeout=10)
+            logger.info(f"🔍 좌표 변환 API 응답 상태: {response.status_code}")
+            logger.info(f"📄 좌표 변환 API 전체 응답 내용:")
+            logger.info(f"{response.text}")
+            
+            response.raise_for_status()
+            
+            # XML 파싱하여 좌표 추출
+            import xml.etree.ElementTree as ET
+            root = ET.fromstring(response.content)
+            
+            # 좌표 찾기 (VWorld API 응답 구조에 맞게 수정)
+            point = root.find('.//point')
+            if point is not None:
+                x = point.find('x')
+                y = point.find('y')
+                if x is not None and y is not None and x.text and y.text:
+                    try:
+                        lon = float(x.text)
+                        lat = float(y.text)
+                        logger.info(f"✅ 좌표 변환 성공: lat={lat}, lon={lon}")
+                        return lat, lon
+                    except ValueError as e:
+                        logger.error(f"❌ 좌표 변환 실패 (값 변환 오류): {e}")
+                        logger.error(f"📄 원본 x값: {x.text}, y값: {y.text}")
+                        return None, None
+                else:
+                    logger.warning(f"⚠️ 좌표 값이 비어있음: x={x.text if x is not None else None}, y={y.text if y is not None else None}")
+            else:
+                logger.warning(f"❌ XML에서 point 태그를 찾을 수 없음")
+            
+            logger.warning(f"❌ 좌표를 찾을 수 없음")
+            logger.warning(f"📄 전체 응답 내용: {response.text}")
+            return None, None
+            
+        except Exception as e:
+            logger.error(f"좌표 변환 실패: {address} - {e}")
+            logger.error(f"요청 URL: {self.base_url}")
+            logger.error(f"요청 파라미터: {params}")
+            return None, None
+
+def detect_address_type(address: str) -> str:
+    """주소가 도로명주소인지 지번주소인지 감지"""
+    if not address:
+        return "unknown"
+    
+    # '~가'로 끝나는 동명은 지번주소 (예: 종로6가, 종로5가)
+    if re.search(r'[가-힣]+가\s+\d+', address):
+        return "jibun"
+    
+    # '로' 또는 '길'로 끝나는 단어가 포함되어 있으면 도로명주소 (단, '~가'는 제외)
+    if re.search(r'[가-힣]+로(?!\d+가)\d*[가-힣]*\s+\d+', address) or re.search(r'[가-힣]+길\d*[가-힣]*\s+\d+', address):
+        return "road"
+    
+    # '지하'가 포함된 도로명주소 패턴
+    if re.search(r'[가-힣]+로\s+지하\d+', address) or re.search(r'[가-힣]+길\s+지하\d+', address):
+        return "road"
+    else:
+        return "jibun"
+
+def detect_file_encoding(file_path: Path) -> str:
+    """파일의 인코딩을 자동으로 감지"""
+    try:
+        with open(file_path, 'rb') as f:
+            raw_data = f.read()
+            encoding_result = chardet.detect(raw_data)
+            detected_encoding = encoding_result['encoding']
+            confidence = encoding_result['confidence']
+            
+        logger.info(f"🔍 파일 인코딩 감지: {file_path.name} -> {detected_encoding} (신뢰도: {confidence:.2f})")
+        
+        # 신뢰도가 낮거나 None인 경우 UTF-8로 폴백
+        if not detected_encoding or confidence < 0.7:
+            logger.warning(f"⚠️ 인코딩 감지 신뢰도 낮음, UTF-8로 폴백: {file_path.name}")
+            return 'utf-8'
+            
+        return detected_encoding
+    except Exception as e:
+        logger.error(f"❌ 인코딩 감지 실패: {file_path.name} - {e}")
+        return 'utf-8'
+
+def read_csv_with_auto_encoding(file_path: Path, **kwargs) -> pd.DataFrame:
+    """인코딩을 자동으로 감지하여 CSV 파일을 읽기"""
+    detected_encoding = detect_file_encoding(file_path)
+    
+    try:
+        # 감지된 인코딩으로 파일 읽기
+        df = pd.read_csv(file_path, encoding=detected_encoding, **kwargs)
+        logger.info(f"✅ CSV 파일 읽기 성공: {file_path.name} (인코딩: {detected_encoding})")
+        return df
+    except UnicodeDecodeError:
+        # 감지된 인코딩으로 실패하면 UTF-8로 재시도
+        logger.warning(f"⚠️ {detected_encoding} 인코딩 실패, UTF-8로 재시도: {file_path.name}")
+        df = pd.read_csv(file_path, encoding='utf-8', **kwargs)
+        return df
+    except Exception as e:
+        logger.error(f"❌ CSV 파일 읽기 실패: {file_path.name} - {e}")
+        raise
+
+def preprocess_subway_address(addr_raw: str) -> str:
+    """지하철역 주소 전처리 - 지하철역 특화 전처리"""
+    if not addr_raw:
+        return addr_raw
+    
+    import re
+    
+    # 지하철역 관련 전처리
+    # 역명과 괄호 제거 (예: "신설동역(2호선)" → "")
+    addr_raw = re.sub(r'\s+[가-힣]+역\([^)]*\)', '', addr_raw).strip()
+    
+    # 남은 괄호 제거 (예: "(2호선)" → "")
+    addr_raw = re.sub(r'\s*\([^)]*\)', '', addr_raw).strip()
+    
+    return addr_raw
+
+def preprocess_park_address(addr_raw: str) -> str:
+    """공원 주소 전처리 - 공원 특화 전처리"""
+    if not addr_raw:
+        return addr_raw
+    
+    import re
+    
+    # 공원 특화 전처리
+    # 괄호 안의 동 정보 제거 (예: "(예장동)" → "")
+    addr_raw = re.sub(r'\s*\([^)]*동[^)]*\)', '', addr_raw).strip()
+    
+    # 공원명 제거 (예: "길동생태공원" → "")
+    addr_raw = re.sub(r'\s+[가-힣]*공원[가-힣]*', '', addr_raw).strip()
+    
+    # 불필요한 공백 정리
+    addr_raw = re.sub(r'\s+', ' ', addr_raw).strip()
+    
+    return addr_raw
 
 def preprocess_address(addr_raw: str) -> str:
     """주소 전처리 - JUSO API 매칭률 향상을 위한 정리"""
@@ -88,9 +320,10 @@ def preprocess_address(addr_raw: str) -> str:
     addr_raw = re.sub(r'\s+함께주택.*$', '', addr_raw)  # 함께주택6호, 함께주택5호
     addr_raw = re.sub(r'\s+주상복합건물.*$', '', addr_raw)  # 주상복합건물
     
-    # 5. 지번주소 정리 (~동 숫자-숫자 뒤의 모든 문자 제거)
+    # 5. 지번주소 정리 (~동 숫자 또는 ~동 숫자-숫자 뒤의 모든 문자 제거)
     # 예: "서울 종로구 동숭동 192-6 1" -> "서울 종로구 동숭동 192-6"
-    addr_raw = re.sub(r'([가-힣]+동\s+\d+-\d+)\s+.*$', r'\1', addr_raw)
+    # 예: "서울 광진구 능동 25 선화예술중고등학교" -> "서울 광진구 능동 25"
+    addr_raw = re.sub(r'([가-힣]+동\s+\d+[-\d]*)\s+.*$', r'\1', addr_raw)
     
     # 6. 도로명+건물번호 분리 (일반화된 패턴)
     # 6-1. *로*길+숫자 -> *로*길 숫자 (예: 북악산로3길44 -> 북악산로3길 44)
@@ -104,10 +337,14 @@ def preprocess_address(addr_raw: str) -> str:
     
     # 7. 도로명주소 정리 (~길숫자(-숫자) 또는 ~길 숫자(-숫자) 뒤의 모든 문자 제거)
     # 예: "서울 서대문구 연희로18길 36 애스트리23" -> "서울 서대문구 연희로18길 36"
-    # ~길숫자(-숫자) 패턴 뒤의 모든 문자 제거
-    addr_raw = re.sub(r'([가-힣]+길\d+[-\d]*)\s+.*$', r'\1', addr_raw)
-    # ~길 숫자(-숫자) 패턴 뒤의 모든 문자 제거
-    addr_raw = re.sub(r'([가-힣]+길\s+\d+[-\d]*)\s+.*$', r'\1', addr_raw)
+    # 주의: "다길", "나길" 등은 실제 도로명이므로 건물번호를 제거하면 안됨
+    # ~길숫자(-숫자) 패턴 뒤의 모든 문자 제거 (단, "다길", "나길" 등은 제외)
+    # "다길", "나길" 등이 포함된 경우는 건물번호를 제거하지 않음
+    if not re.search(r'[다나]길', addr_raw):
+        addr_raw = re.sub(r'([가-힣]+길\d+[-\d]*)\s+.*$', r'\1', addr_raw)
+    # ~길 숫자(-숫자) 패턴 뒤의 모든 문자 제거 (단, "다길", "나길" 등은 제외)
+    if not re.search(r'[다나]길', addr_raw):
+        addr_raw = re.sub(r'([가-힣]+길\s+\d+[-\d]*)\s+.*$', r'\1', addr_raw)
     # ~로 숫자(-숫자) 패턴 뒤의 모든 문자 제거 (길이 없는 경우)
     addr_raw = re.sub(r'([가-힣]+로\s+\d+[-\d]*)\s+.*$', r'\1', addr_raw)
     
@@ -228,10 +465,12 @@ def preprocess_address(addr_raw: str) -> str:
         addr_raw = re.sub(r'([가-힣]+로\d*[가-힣]*\s+\d+[-\d]*)\s+[가-힣].*$', r'\1', addr_raw)
     
     # 6-1. 특수 케이스: 도로명이 너무 구체적인 경우 더 간단하게
-    # 광평로34길 -> 광평로로 단순화
-    addr_raw = re.sub(r'([가-힣]+로)\d+길', r'\1', addr_raw)
-    # 도로명 + 숫자 뒤의 모든 것 제거
-    addr_raw = re.sub(r'([가-힣]+로\s+\d+[-\d]*)\s+[가-힣].*$', r'\1', addr_raw)
+    # 주의: "8길", "9길" 등은 실제 도로명이므로 제거하면 안됨
+    # 광평로34길 -> 광평로로 단순화 (단, 일반적인 숫자길은 제외)
+    # addr_raw = re.sub(r'([가-힣]+로)\d+길', r'\1', addr_raw)  # 주석 처리
+    # 도로명 + 숫자 뒤의 모든 것 제거 (길이 없는 경우만)
+    if '길' not in addr_raw:
+        addr_raw = re.sub(r'([가-힣]+로\s+\d+[-\d]*)\s+[가-힣].*$', r'\1', addr_raw)
     
     # 7. 어린이집/유치원 등 시설명 제거 (더 구체적인 패턴)
     # ~길/로 + 숫자 + 시설명 패턴
@@ -249,7 +488,9 @@ def preprocess_address(addr_raw: str) -> str:
     addr_raw = re.sub(r"(산)(\d+)", r"\1 \2", addr_raw)
 
     # 8-2. 세부 동·호수 제거 (예: 106-101, 101-102)
-    addr_raw = re.sub(r"\d+-\d+$", "", addr_raw)
+    # 주의: 건물번호는 제거하면 안됨 (예: 22-5는 건물번호)
+    # 큰 번호의 세부 동·호수만 제거 (예: 106-101, 101-102)
+    addr_raw = re.sub(r"\d{3,}-\d+$", "", addr_raw)
 
     # 8-3. 층/호/상세 위치 제거
     addr_raw = re.sub(r"\d+층", "", addr_raw)      # 3층, 2층
@@ -294,8 +535,15 @@ def preprocess_address(addr_raw: str) -> str:
 
     # 4. 도로명+번지까지만 남기기
     # 예: "서울특별시 성북구 동소문로 305 지층" -> "서울특별시 성북구 동소문로 305"
-    addr = re.sub(r'([가-힣]+로\s*\d+[-\d]*).*$', r'\1', addr)
-    addr = re.sub(r'([가-힣]+길\s*\d+[-\d]*).*$', r'\1', addr)
+    # 주의: "다길", "나길" 등은 실제 도로명이므로 건물번호를 제거하면 안됨
+    # "로"로 끝나는 도로명에만 적용 (길이 없는 경우만)
+    if not re.search(r'[다나]길', addr) and '길' not in addr:
+        addr = re.sub(r'([가-힣]+로\s*\d+[-\d]*).*$', r'\1', addr)
+    # 주의: "8길", "9길" 등도 실제 도로명이므로 건물번호를 제거하면 안됨
+    # "다길", "나길" 등 특수한 경우만 제외
+    # 일반적인 숫자길은 건물번호를 제거하지 않음
+    if not re.search(r'[다나]길', addr) and not re.search(r'\d+길', addr):
+        addr = re.sub(r'([가-힣]+길\s*\d+[-\d]*).*$', r'\1', addr)
 
     # 5. 공백 정리
     addr = re.sub(r'\s+', ' ', addr).strip()
@@ -310,6 +558,18 @@ class InfraNormalizer:
         self.normalized_facilities: List[Dict] = []
         self.normalized_subway_stations: List[Dict] = []
         self.failed_addresses: List[Dict] = []  # 실패한 주소 정규화 데이터
+        
+        # 새로운 API 클라이언트들 초기화
+        emd_api_key = os.getenv("TOEMDCD_API_KEY")
+        tolola_api_key = os.getenv("TOLOLA_API_KEY")
+        
+        if not emd_api_key:
+            raise ValueError("TOEMDCD_API_KEY 환경변수가 설정되지 않았습니다.")
+        if not tolola_api_key:
+            raise ValueError("TOLOLA_API_KEY 환경변수가 설정되지 않았습니다.")
+            
+        self.emd_api = EmdCodeAPI(emd_api_key)
+        self.tolola_api = ToLolaAPI(tolola_api_key)
         
         # facility_categories 매핑 (DB에서 가져오거나 하드코딩)
         # 실제 운영 환경에서는 DB에서 동적으로 가져오는 것이 좋습니다.
@@ -328,6 +588,26 @@ class InfraNormalizer:
             'college': 2,          # school로 통합
             'bus_stop': 9          # bus로 통합
         }
+        
+        # facility_id 생성용 카테고리별 접두사 매핑
+        self.facility_id_prefix_map = {
+            'kindergarten': 'child',    # 어린이집
+            'childSchool': 'chsch',     # 유치원
+            'school': 'sch',            # 초중고
+            'college': 'col',           # 대학
+            'pharmacy': 'pha',          # 약국
+            'hospital': 'hos',          # 병원
+            'mart': 'mart',             # 마트
+            'convenience': 'con',       # 편의점
+            'gym': 'gym',               # 공공체육시설
+            'park': 'pk',               # 공원
+            'subway': 'sub',            # 지하철역
+            'bus': 'bus',               # 버스정류소
+            'bus_stop': 'bus'           # 버스정류소 (별칭)
+        }
+        
+        # 카테고리별 카운터 (facility_id 생성용)
+        self.facility_counters = {prefix: 0 for prefix in self.facility_id_prefix_map.values()}
         
         # 주소 정규화 API 키 로드
         self.juso_api_key = os.getenv("JUSO_API_KEY")
@@ -368,6 +648,20 @@ class InfraNormalizer:
     def _get_category_id(self, code: str) -> Optional[int]:
         """시설 카테고리 코드를 기반으로 ID를 조회"""
         return self.category_map.get(code)
+    
+    def _generate_facility_id(self, facility_type: str) -> str:
+        """시설 타입에 따라 고유한 facility_id 생성"""
+        prefix = self.facility_id_prefix_map.get(facility_type, 'unk')
+        
+        # 카운터 증가
+        self.facility_counters[prefix] += 1
+        
+        # 4자리 숫자로 포맷팅 (예: child0001, sch0001)
+        return f"{prefix}{self.facility_counters[prefix]:04d}"
+    
+    def _get_facility_cd(self, facility_type: str) -> str:
+        """시설 타입에 따라 cd (접두사) 반환"""
+        return self.facility_id_prefix_map.get(facility_type, 'unk')
 
     def _safe_int(self, value) -> Optional[int]:
         """안전하게 정수로 변환"""
@@ -388,22 +682,20 @@ class InfraNormalizer:
             return None
 
     def _normalize_address(self, address_raw: str, facility_name: str = "", facility_type: str = "") -> Dict[str, Any]:
-        """주소 정규화 - housing과 동일한 방식"""
+        """주소 정규화 - 새로운 필드들 추가"""
         if not address_raw or address_raw.strip() == '':
             return {
                 'address_raw': address_raw,
-                'address_norm': None,
-                'si_do': None,
-                'si_gun_gu': None,
-                'si_gun_gu_dong': None,
-                'road_full': None,
-                'jibun_full': None,
+                'address_nm': None,
+                'address_id': None,
                 'lat': None,
-                'lon': None,
-                'geo_extra': None
+                'lon': None
             }
         
-        logger.info(f"원본 주소: {address_raw}")
+        logger.info(f"🏠 주소 정규화 시작")
+        logger.info(f"📍 원본 주소: {address_raw}")
+        logger.info(f"🏢 시설명: {facility_name}")
+        logger.info(f"🏷️ 시설타입: {facility_type}")
         
         # 서울특별시 추출 (모든 주소에 공통 적용)
         si_do = None
@@ -412,19 +704,20 @@ class InfraNormalizer:
         elif '서울' in address_raw:
             si_do = '서울특별시'
         
-        # 산이 포함된 주소의 경우 직접 파싱
-        if '산' in address_raw:
-            logger.info(f"산 포함 주소 직접 파싱: {address_raw}")
-            result = self._parse_mountain_address(address_raw)
-            result['si_do'] = si_do  # 서울특별시 정보 덮어쓰기
-            return result
-        
         # 공원 주소의 경우 미리 체크
         is_park = facility_name and '공원' in facility_name
         
-        # 주소 전처리
-        addr_processed = preprocess_address(address_raw)
-        logger.info(f"전처리된 주소: {addr_processed}")
+        # 주소 전처리 (시설 타입별 전용 전처리 함수 사용)
+        if facility_type == 'subway':
+            addr_processed = preprocess_subway_address(address_raw)
+            logger.info(f"🚇 지하철 전용 전처리 적용")
+        elif is_park:
+            addr_processed = preprocess_park_address(address_raw)
+            logger.info(f"🌳 공원 전용 전처리 적용")
+        else:
+            addr_processed = preprocess_address(address_raw)
+            logger.info(f"🔧 일반 전처리 적용")
+        logger.info(f"✨ 전처리된 주소: {addr_processed}")
         
         # 여러 패턴으로 주소 정규화 시도
         success = False
@@ -433,9 +726,9 @@ class InfraNormalizer:
         
         for attempt, addr_to_try in enumerate([addr_processed, address_raw]):
             if attempt > 0:
-                logger.info(f"주소 정규화 재시도 ({attempt+1}): {addr_to_try}")
+                logger.info(f"🔄 주소 정규화 재시도 ({attempt+1}): {addr_to_try}")
             else:
-                logger.info(f"주소 정규화 시도: {addr_to_try}")
+                logger.info(f"🎯 주소 정규화 시도: {addr_to_try}")
             
             try:
                 result = normalize_address(addr_to_try)
@@ -443,18 +736,33 @@ class InfraNormalizer:
                 # 법정동 추출 (JUSO API에서 직접 가져오기)
                 dong = result.get('eupmyeon_dong', '')  # JUSO API에서 직접 가져오기
                 
-                logger.info(f"주소 정규화 성공: {result}")
+                logger.info(f"✅ 주소 정규화 성공!")
+                logger.info(f"📋 정규화 결과:")
+                logger.info(f"   - 도로명주소: {result.get('road_full', 'N/A')}")
+                logger.info(f"   - 지번주소: {result.get('jibun_full', 'N/A')}")
+                logger.info(f"   - 시도: {result.get('sido', 'N/A')}")
+                logger.info(f"   - 시군구: {result.get('sigungu', 'N/A')}")
+                logger.info(f"   - 읍면동: {result.get('eupmyeon_dong', 'N/A')}")
+                logger.info(f"   - 법정동코드: {result.get('bcode', 'N/A')}")
+                logger.info(f"   - 좌표: ({result.get('y', 'N/A')}, {result.get('x', 'N/A')})")
                 success = True
                 break
             except AddressNormalizerError as e:
-                logger.warning(f"주소 정규화 실패 (시도 {attempt+1}): {addr_to_try} - {e}")
+                logger.warning(f"⚠️ 주소 정규화 실패 (시도 {attempt+1}): {addr_to_try} - {e}")
                 if attempt == 1:  # 마지막 시도
-                    logger.error(f"주소 정규화 최종 실패: {address_raw} - {e}")
+                    logger.error(f"❌ 주소 정규화 최종 실패: {address_raw} - {e}")
                     
                     # 공원인 경우 직접 파싱 시도
                     if is_park:
-                        logger.info(f"공원 주소 직접 파싱 시도: {address_raw}")
+                        logger.info(f"🌳 공원 주소 직접 파싱 시도: {address_raw}")
                         result = self._parse_park_address(address_raw)
+                        result['si_do'] = si_do  # 서울특별시 정보 덮어쓰기
+                        return result
+                    
+                    # 진짜 산 주소인 경우 직접 파싱 시도 (도로명이 아닌 경우만)
+                    if '산' in address_raw and not ('로' in address_raw or '길' in address_raw):
+                        logger.info(f"⛰️ 산 주소 직접 파싱 시도: {address_raw}")
+                        result = self._parse_mountain_address(address_raw)
                         result['si_do'] = si_do  # 서울특별시 정보 덮어쓰기
                         return result
                     
@@ -470,44 +778,80 @@ class InfraNormalizer:
                     self.failed_addresses.append(failed_data)
         
         if success and result:  # result가 존재할 때만
-            # 현재 result에서 주소 정보 추출
-            road_full = result.get("road_full", "")
-            jibun_full = result.get("jibun_full", "")
+            # address_nm 설정 (정규화된 주소)
+            address_nm = result.get("jibun_full")
+            # address_nm에서 건물명 제거 (동+지번 뒤의 문자 제거)
+            if address_nm:
+                import re
+                address_nm = re.sub(r'([가-힣]+동\s+\d+[-\d]*)\s+.*$', r'\1', address_nm)
+            logger.info(f"📝 address_nm 설정: {address_nm}")
             
-            # 도로명주소가 있으면 지번주소 조회 시도
-            if road_full:
-                try:
-                    jibun_result = normalize_address(road_full, reverse=True)
-                    jibun_full = jibun_result.get("jibun_full", jibun_full)
-                except:
-                    pass  # 기존 jibun_full 유지
+            # 법정동 코드 조회
+            emd_code = None
+            if address_nm:
+                logger.info(f"🔍 법정동 코드 조회 시작...")
+                emd_code = self.emd_api.get_emd_code(address_nm)
+                if emd_code:
+                    logger.info(f"✅ 법정동 코드 조회 성공: {emd_code}")
+                else:
+                    logger.warning(f"⚠️ 법정동 코드 조회 실패")
+                time.sleep(0.1)  # API 호출 간격 조절
+            else:
+                # address_nm이 없는 경우 원본 주소에서 앞 3단어 추출해서 시도
+                logger.info(f"🔄 address_nm이 없어서 원본 주소에서 앞 3단어 추출 시도...")
+                fallback_address = self._extract_first_three_words(address_raw)
+                if fallback_address:
+                    logger.info(f"📍 폴백 주소: {fallback_address}")
+                    emd_code = self.emd_api.get_emd_code(fallback_address)
+                    if emd_code:
+                        logger.info(f"✅ 폴백 법정동 코드 조회 성공: {emd_code}")
+                        # address_nm도 폴백 주소로 설정
+                        address_nm = fallback_address
+                    else:
+                        logger.warning(f"⚠️ 폴백 법정동 코드 조회도 실패")
+                else:
+                    logger.warning(f"⚠️ 폴백 주소 추출 실패")
             
-            # 지번주소가 있으면 도로명주소 조회 시도
-            if jibun_full:
-                try:
-                    road_result = normalize_address(jibun_full)
-                    road_full = road_result.get("road_full", road_full)
-                except:
-                    pass  # 기존 road_full 유지
+            # 좌표 변환 (childSchool, neisSchool, subway, SebcCollege, gym, school, college만)
+            lat, lon = None, None
+            if facility_type in ["childSchool", "neisSchool", "subway", "SebcCollege", "gym", "school", "college"] and addr_processed:
+                logger.info(f"🌍 좌표 변환 시작...")
+                # 전처리된 주소를 사용하고 주소 타입에 따라 type 파라미터 설정
+                address_type = detect_address_type(addr_processed)
+                type_param = "ROAD" if address_type == "road" else "PARCEL"
+                logger.info(f"📍 주소 타입 감지: {address_type} -> API type: {type_param}")
+                lat, lon = self.tolola_api.get_coordinates(addr_processed, type_param)
+                if lat and lon:
+                    logger.info(f"✅ 좌표 변환 성공: lat={lat}, lon={lon}")
+                else:
+                    logger.warning(f"⚠️ 좌표 변환 실패")
+                time.sleep(0.1)  # API 호출 간격 조절
             
+            final_result = {
+                'address_raw': address_raw,
+                'address_nm': address_nm,
+                'address_id': emd_code,
+                'lat': lat,
+                'lon': lon
+            }
+            logger.info(f"🎯 최종 주소 정규화 결과:")
+            logger.info(f"   - address_raw: {final_result['address_raw']}")
+            logger.info(f"   - address_nm: {final_result['address_nm']}")
+            logger.info(f"   - address_id: {final_result['address_id']}")
+            logger.info(f"   - lat: {final_result['lat']}")
+            logger.info(f"   - lon: {final_result['lon']}")
+            
+            return final_result
+        else:
+            # JUSO API 완전 실패 시
+            logger.warning(f"주소 정규화 실패: {address_raw}")
             return {
                 'address_raw': address_raw,
-                'address_norm': road_full or jibun_full,
-                'si_do': si_do or result.get('sido'),  # 서울특별시 우선 적용
-                'si_gun_gu': result.get('sigungu'),
-                'si_gun_gu_dong': dong,  # JUSO API에서 가져온 동 정보
-                'road_full': road_full,  # 새로 추가
-                'jibun_full': jibun_full,  # 새로 추가
-                'lat': result.get('y'),  # API returns y(lat), x(lon)
-                'lon': result.get('x'),
-                'geo_extra': result.get('geo_extra')
+                'address_nm': None,
+                'address_id': None,
+                'lat': None,
+                'lon': None
             }
-        else:
-            # JUSO API 완전 실패 시 최소한 시도/구만이라도 파싱
-            logger.info(f"JUSO API 완전 실패, 최소 파싱 시도: {address_raw}")
-            result = self._parse_minimal_address(address_raw)
-            result['si_do'] = si_do  # 서울특별시 정보 덮어쓰기
-            return result
 
     def _parse_mountain_address(self, address_raw: str) -> Dict[str, Any]:
         """산이 포함된 주소 직접 파싱"""
@@ -595,7 +939,7 @@ class InfraNormalizer:
             logger.warning(f"어린이집 파일이 존재하지 않습니다: {file_path}")
             return
 
-        df = pd.read_csv(file_path, encoding='utf-8')
+        df = read_csv_with_auto_encoding(file_path)
         logger.info(f"어린이집 데이터 정규화 시작: {len(df)}개")
 
         for _, row in df.iterrows():
@@ -604,15 +948,12 @@ class InfraNormalizer:
             address_info = self._normalize_address(address_raw, facility_name, 'childcare')
             
             facility_data = {
-                'category_id': self._get_category_id('kindergarten'),
+                'facility_id': self._generate_facility_id('kindergarten'),
+                'cd': self._get_facility_cd('kindergarten'),
                 'name': facility_name,
                 'address_raw': address_info['address_raw'],
-                'address_norm': address_info['address_norm'],
-                'si_do': address_info['si_do'],
-                'si_gun_gu': address_info['si_gun_gu'],
-                'si_gun_gu_dong': address_info.get('si_gun_gu_dong'),
-                'road_full': address_info.get('road_full'),
-                'jibun_full': address_info.get('jibun_full'),
+                'address_nm': address_info['address_nm'],
+                'address_id': address_info['address_id'],
                 'lat': address_info['lat'] or self._safe_float(row.get('LA')),
                 'lon': address_info['lon'] or self._safe_float(row.get('LO')),
                 'phone': str(row.get('CRTELNO', '')),
@@ -625,8 +966,7 @@ class InfraNormalizer:
                 'facility_extra': {
                     'childcare_type': str(row.get('CRTYPENAME', ''))
                 },
-                'data_source': 'openseoul',
-                'geo_extra': address_info['geo_extra']
+                'data_source': 'openseoul'
             }
             self.normalized_facilities.append(facility_data)
         logger.info(f"어린이집 데이터 정규화 완료: {len(self.normalized_facilities)}개")
@@ -637,7 +977,7 @@ class InfraNormalizer:
             logger.warning(f"학교 파일이 존재하지 않습니다: {file_path}")
             return
 
-        df = pd.read_csv(file_path, encoding='utf-8')
+        df = read_csv_with_auto_encoding(file_path)
         logger.info(f"학교 데이터 정규화 시작: {len(df)}개")
 
         for _, row in df.iterrows():
@@ -646,15 +986,12 @@ class InfraNormalizer:
             address_info = self._normalize_address(address_raw, facility_name, 'school')
             
             facility_data = {
-                'category_id': self._get_category_id('school'),
+                'facility_id': self._generate_facility_id('school'),
+                'cd': self._get_facility_cd('school'),
                 'name': facility_name,
                 'address_raw': address_info['address_raw'],
-                'address_norm': address_info['address_norm'],
-                'si_do': address_info['si_do'],
-                'si_gun_gu': address_info['si_gun_gu'],
-                'si_gun_gu_dong': address_info.get('si_gun_gu_dong'),
-                'road_full': address_info.get('road_full'),
-                'jibun_full': address_info.get('jibun_full'),
+                'address_nm': address_info['address_nm'],
+                'address_id': address_info['address_id'],
                 'lat': address_info['lat'] or self._safe_float(row.get('LAT')),
                 'lon': address_info['lon'] or self._safe_float(row.get('LON')),
                 'phone': str(row.get('ORG_TELNO', '')),
@@ -670,8 +1007,7 @@ class InfraNormalizer:
                     'high_school_type': str(row.get('HS_GNRL_BUSNS_SC_NM', '')),
                     'special_purpose': str(row.get('SPCLY_PURPS_HS_ORD_NM', ''))
                 },
-                'data_source': 'seoul_school',
-                'geo_extra': address_info['geo_extra']
+                'data_source': 'openseoul'
             }
             self.normalized_facilities.append(facility_data)
         logger.info(f"학교 데이터 정규화 완료: {len(self.normalized_facilities)}개")
@@ -682,7 +1018,7 @@ class InfraNormalizer:
             logger.warning(f"공원 파일이 존재하지 않습니다: {file_path}")
             return
 
-        df = pd.read_csv(file_path, encoding='utf-8')
+        df = read_csv_with_auto_encoding(file_path)
         logger.info(f"공원 데이터 정규화 시작: {len(df)}개")
 
         for _, row in df.iterrows():
@@ -691,17 +1027,14 @@ class InfraNormalizer:
             address_info = self._normalize_address(address_raw, facility_name, 'park')
             
             facility_data = {
-                'category_id': self._get_category_id('park'),
+                'facility_id': self._generate_facility_id('park'),
+                'cd': self._get_facility_cd('park'),
                 'name': facility_name,
-                'address_raw': address_info['address_raw'],
-                'address_norm': address_info['address_norm'],
-                'si_do': address_info['si_do'],
-                'si_gun_gu': address_info['si_gun_gu'],
-                'si_gun_gu_dong': address_info.get('si_gun_gu_dong'),
-                'road_full': address_info.get('road_full'),
-                'jibun_full': address_info.get('jibun_full'),
-                'lat': address_info['lat'] or self._safe_float(row.get('LATITUDE')),
-                'lon': address_info['lon'] or self._safe_float(row.get('LONGITUDE')),
+                'address_raw': address_info.get('address_raw', address_raw),
+                'address_nm': address_info.get('address_nm'),
+                'address_id': address_info.get('address_id'),
+                'lat': address_info.get('lat') or self._safe_float(row.get('LATITUDE')),
+                'lon': address_info.get('lon') or self._safe_float(row.get('LONGITUDE')),
                 'phone': str(row.get('P_ADMINTEL', '')),
                 'website': str(row.get('TEMPLATE_URL', '')),
                 'operating_hours': None,
@@ -717,11 +1050,9 @@ class InfraNormalizer:
                     'main_plants': str(row.get('MAIN_PLANTS', '')),
                     'guidance': str(row.get('GUIDANCE', '')),
                     'visit_road': str(row.get('VISIT_ROAD', '')),
-                    'use_refer': str(row.get('USE_REFER', '')),
-                    'all_dongs': address_info.get('si_gun_gu_dongs', [])  # 여러 동 정보 저장
+                    'use_refer': str(row.get('USE_REFER', ''))
                 },
-                'data_source': 'openseoul',
-                'geo_extra': address_info['geo_extra']
+                'data_source': 'openseoul'
             }
             self.normalized_facilities.append(facility_data)
         logger.info(f"공원 데이터 정규화 완료: {len(self.normalized_facilities)}개")
@@ -733,14 +1064,14 @@ class InfraNormalizer:
             return
 
         # 1. 지하철역 정보 파일 로드
-        df_stn = pd.read_csv(file_path, encoding="utf-8", dtype=str)
+        df_stn = read_csv_with_auto_encoding(file_path, dtype=str)
         logger.info(f"지하철역 데이터 로드: {len(df_stn)}개")
 
         # 2. 주소 정보 파일 로드 (StationAdresTelno)
         addr_file = self.data_dir / "seoul_StationAdresTelno_20250921.csv"
         addr_map = {}
         if addr_file.exists():
-            df_addr = pd.read_csv(addr_file, encoding="utf-8", dtype=str)
+            df_addr = read_csv_with_auto_encoding(addr_file, dtype=str)
 
             # 주소 컬럼 자동 탐색
             addr_col_candidates = ["OLD_ADDR", "OLD_ADDRESS", "ADDR", "ADDRESS"]
@@ -776,39 +1107,19 @@ class InfraNormalizer:
             # (2) 주소 매핑 (서울만 성공 → 서울 외 지역은 빈값)
             address_raw = addr_map.get(station_name_raw, "")
             
-            # (2-1) 지하철역 주소 전처리
-            if address_raw:
-                # 오타 수정
-                address_raw = address_raw.replace("서울툭별시", "서울특별시")
-                # 역명 제거 (예: "봉천역(2호선)" → "봉천")
-                import re
-                address_raw = re.sub(r'[가-힣]+역\([^)]*\)', '', address_raw).strip()
-                # 괄호 제거
-                address_raw = re.sub(r'\([^)]*\)', '', address_raw).strip()
-                # 공백 정리
-                address_raw = re.sub(r'\s+', ' ', address_raw).strip()
+            # (2-1) 지하철역 주소 전처리 (제거 - 다른 시설들과 동일하게 _normalize_address에서 처리)
+            # address_raw는 원본 그대로 유지하고, address_nm 구할 때만 전처리
             
-            # (3) 주소 정규화 (지하철역은 간단한 파싱만 사용)
+            # (3) 주소 정규화 (다른 시설들과 동일하게 _normalize_address 사용)
             if address_raw:
-                address_info = self._parse_common_address(address_raw, create_norm=True)
-                # 서울특별시 정보 추가
-                if '서울특별시' in address_raw or '서울' in address_raw:
-                    address_info['si_do'] = '서울특별시'
-                    # address_norm에 서울특별시 추가
-                    if address_info['address_norm'] and address_info['si_gun_gu']:
-                        address_info['address_norm'] = f"서울특별시 {address_info['address_norm']}"
+                address_info = self._normalize_address(address_raw, station_name_raw, 'subway')
             else:
                 address_info = {
                     'address_raw': address_raw,
-                    'address_norm': None,
-                    'si_do': None,
-                    'si_gun_gu': None,
-                    'si_gun_gu_dong': None,
-                    'road_full': None,
-                    'jibun_full': None,
+                    'address_nm': None,
+                    'address_id': None,
                     'lat': None,
-                    'lon': None,
-                    'geo_extra': None
+                    'lon': None
                 }
 
             # (4) 호선 정보 (CSV 원본 그대로 반영)
@@ -821,19 +1132,16 @@ class InfraNormalizer:
                 transfer_lines = [ln.strip() for ln in line_name.split(",")]
                 is_transfer = True
 
-            # (6) 최종 데이터 구성 (주소 필드 순서 통일)
+            # (6) 최종 데이터 구성 (새로운 필드 구조)
             station_data = {
+                "facility_id": self._generate_facility_id('subway'),
+                "cd": self._get_facility_cd('subway'),
                 "station_name": station_name_raw,
                 "line_name": line_name,  # ✅ CSV 원본 반영
                 "station_code": str(row.get("FR_CODE", "")),
                 "address_raw": address_info['address_raw'],
-                "address_norm": address_info['address_norm'],
-                "si_do": address_info['si_do'],
-                "si_gun_gu": address_info['si_gun_gu'],
-                "si_gun_gu_dong": address_info.get('si_gun_gu_dong'),
-                "road_full": address_info.get('road_full'),
-                "jibun_full": address_info.get('jibun_full'),
-                "address_id": None,  # FK는 DB 적재 단계에서 처리
+                "address_nm": address_info['address_nm'],
+                "address_id": address_info['address_id'],
                 "lat": address_info['lat'],
                 "lon": address_info['lon'],
                 "exit_count": None,
@@ -846,8 +1154,7 @@ class InfraNormalizer:
                     "subway_code": str(row.get("SBWY_STNS_NM", "")),
                     "route_code": str(row.get("SBWY_ROUT_LN", "")),
                 },
-                "data_source": "seoul_subway",
-                "geo_extra": address_info['geo_extra']
+                "data_source": "openseoul"
             }
             self.normalized_subway_stations.append(station_data)
 
@@ -859,7 +1166,7 @@ class InfraNormalizer:
             logger.warning(f"약국 파일이 존재하지 않습니다: {file_path}")
             return
 
-        df = pd.read_csv(file_path, encoding='utf-8')
+        df = read_csv_with_auto_encoding(file_path)
         logger.info(f"약국 데이터 정규화 시작: {len(df)}개")
 
         for _, row in df.iterrows():
@@ -868,15 +1175,12 @@ class InfraNormalizer:
             address_info = self._normalize_address(address_raw, facility_name, 'pharmacy')
             
             facility_data = {
-                'category_id': self._get_category_id('pharmacy'),
+                'facility_id': self._generate_facility_id('pharmacy'),
+                'cd': self._get_facility_cd('pharmacy'),
                 'name': facility_name,
                 'address_raw': address_info['address_raw'],
-                'address_norm': address_info['address_norm'],
-                'si_do': address_info['si_do'],
-                'si_gun_gu': address_info['si_gun_gu'],
-                'si_gun_gu_dong': address_info.get('si_gun_gu_dong'),
-                'road_full': address_info.get('road_full'),
-                'jibun_full': address_info.get('jibun_full'),
+                'address_nm': address_info['address_nm'],
+                'address_id': address_info['address_id'],
                 'lat': address_info['lat'] or self._safe_float(row.get('WGS84LAT')),
                 'lon': address_info['lon'] or self._safe_float(row.get('WGS84LON')),
                 'phone': str(row.get('DUTYTEL1', '')),
@@ -890,8 +1194,7 @@ class InfraNormalizer:
                     'pharmacy_id': str(row.get('HOSID', '')),
                     'district': str(row.get('SIGUN_NM', ''))
                 },
-                'data_source': 'openseoul',
-                'geo_extra': address_info['geo_extra']
+                'data_source': 'openseoul'
             }
             self.normalized_facilities.append(facility_data)
         logger.info(f"약국 데이터 정규화 완료: {len(self.normalized_facilities)}개")
@@ -902,7 +1205,7 @@ class InfraNormalizer:
             logger.warning(f"유치원 파일이 존재하지 않습니다: {file_path}")
             return
 
-        df = pd.read_csv(file_path, encoding='utf-8')
+        df = read_csv_with_auto_encoding(file_path)
         logger.info(f"유치원 데이터 정규화 시작: {len(df)}개")
 
         for _, row in df.iterrows():
@@ -911,15 +1214,12 @@ class InfraNormalizer:
             address_info = self._normalize_address(address_raw, facility_name, 'kindergarten')
             
             facility_data = {
-                'category_id': self._get_category_id('childSchool'),
+                'facility_id': self._generate_facility_id('childSchool'),
+                'cd': self._get_facility_cd('childSchool'),
                 'name': facility_name,
                 'address_raw': address_info['address_raw'],
-                'address_norm': address_info['address_norm'],
-                'si_do': address_info['si_do'],
-                'si_gun_gu': address_info['si_gun_gu'],
-                'si_gun_gu_dong': address_info.get('si_gun_gu_dong'),
-                'road_full': address_info.get('road_full'),
-                'jibun_full': address_info.get('jibun_full'),
+                'address_nm': address_info['address_nm'],
+                'address_id': address_info['address_id'],
                 'lat': address_info['lat'],
                 'lon': address_info['lon'],
                 'phone': str(row.get('TELNO', '')),
@@ -932,8 +1232,7 @@ class InfraNormalizer:
                 'facility_extra': {
                     'foundation_type': str(row.get('FNDN_TYPE', ''))
                 },
-                'data_source': 'openseoul',
-                'geo_extra': address_info['geo_extra']
+                'data_source': 'openseoul'
             }
             self.normalized_facilities.append(facility_data)
         logger.info(f"유치원 데이터 정규화 완료: {len(self.normalized_facilities)}개")
@@ -944,24 +1243,21 @@ class InfraNormalizer:
             logger.warning(f"대학 파일이 존재하지 않습니다: {file_path}")
             return
 
-        df = pd.read_csv(file_path, encoding='utf-8')
+        df = read_csv_with_auto_encoding(file_path)
         logger.info(f"대학 데이터 정규화 시작: {len(df)}개")
 
         for _, row in df.iterrows():
-            address_raw = str(row.get('ADD_KOR_ROAD', ''))
+            address_raw = str(row.get('ADD_KOR', ''))
             facility_name = str(row.get('NAME_KOR', ''))
             address_info = self._normalize_address(address_raw, facility_name, 'college')
             
             facility_data = {
-                'category_id': self._get_category_id('college'),
+                'facility_id': self._generate_facility_id('college'),
+                'cd': self._get_facility_cd('college'),
                 'name': facility_name,
                 'address_raw': address_info['address_raw'],
-                'address_norm': address_info['address_norm'],
-                'si_do': address_info['si_do'],
-                'si_gun_gu': address_info['si_gun_gu'],
-                'si_gun_gu_dong': address_info.get('si_gun_gu_dong'),
-                'road_full': address_info.get('road_full'),
-                'jibun_full': address_info.get('jibun_full'),
+                'address_nm': address_info['address_nm'],
+                'address_id': address_info['address_id'],
                 'lat': address_info['lat'],
                 'lon': address_info['lon'],
                 'phone': str(row.get('TEL', '')),
@@ -976,8 +1272,7 @@ class InfraNormalizer:
                     'branch': str(row.get('BRANCH', '')),
                     'type': str(row.get('TYPE', ''))
                 },
-                'data_source': 'openseoul',
-                'geo_extra': address_info['geo_extra']
+                'data_source': 'openseoul'
             }
             self.normalized_facilities.append(facility_data)
         logger.info(f"대학 데이터 정규화 완료: {len(self.normalized_facilities)}개")
@@ -989,7 +1284,7 @@ class InfraNormalizer:
             logger.warning(f"버스정류소 파일이 존재하지 않습니다: {file_path}")
             return
 
-        df = pd.read_csv(file_path, encoding='utf-8')
+        df = read_csv_with_auto_encoding(file_path)
         logger.info(f"버스정류소 데이터 정규화 시작: {len(df)}개")
 
         for _, row in df.iterrows():
@@ -1003,15 +1298,11 @@ class InfraNormalizer:
                 address_raw = ""
             
             facility_data = {
-                'category_id': self._get_category_id('bus_stop'),
+                'facility_id': self._generate_facility_id('bus_stop'),
                 'name': str(row.get('STOPS_NM', '')),  # 정류소명
                 'address_raw': address_raw,
-                'address_norm': None,  # 좌표 기반이므로 정규화 불가
-                'si_do': None,
-                'si_gun_gu': None,
-                'si_gun_gu_dong': None,
-                'road_full': None,
-                'jibun_full': None,
+                'address_nm': None,  # 좌표 기반이므로 정규화 불가
+                'address_id': None,  # 좌표 기반이므로 법정동 코드 없음
                 'lat': y_coord,  # 위도
                 'lon': x_coord,  # 경도
                 'phone': None,
@@ -1028,14 +1319,16 @@ class InfraNormalizer:
                     'x_coord': x_coord,
                     'y_coord': y_coord
                 },
-                'data_source': 'seoul_bus_stop',
-                'geo_extra': None
+                'data_source': 'openseoul'
             }
             self.normalized_facilities.append(facility_data)
         logger.info(f"버스정류소 데이터 정규화 완료: {len(self.normalized_facilities)}개")
 
     def normalize_openseoul_data(self) -> Dict[str, List[Dict]]:
         """OpenSeoul CSV 파일들을 정규화"""
+        # 카운터 초기화
+        self.facility_counters = {prefix: 0 for prefix in self.facility_id_prefix_map.values()}
+        
         openseoul_dir = self.data_dir  # backend/data/public-api/openseoul
 
         # 어린이집 데이터
@@ -1071,11 +1364,40 @@ class InfraNormalizer:
         self._normalize_colleges(college_file)
 
 
-        # 버스정류소 데이터 (최근 수집된 파일)
-        bus_stop_file = openseoul_dir / "seoul_busStopLocationXyInfo_20250921.csv"
-        self._normalize_bus_stops(bus_stop_file)
+        # 버스정류소 데이터는 별도 테이블에 저장하므로 제외
+        # bus_stop_file = openseoul_dir / "seoul_busStopLocationXyInfo_20250921.csv"
+        # self._normalize_bus_stops(bus_stop_file)
+
+        # localdata 폴더 데이터 처리
+        localdata_dir = self.data_dir.parent / "localdata"
+        
+        # 공공체육시설 데이터
+        sports_file = localdata_dir / "utf8_서울시 공공체육시설 정보.csv"
+        if sports_file.exists():
+            self._normalize_sports_facilities(sports_file)
+        
+        # 마트 데이터
+        mart_file = localdata_dir / "utf8_서울시 마트.csv"
+        if mart_file.exists():
+            self._normalize_marts(mart_file)
+        
+        # 병원 데이터
+        hospital_file = localdata_dir / "utf8_서울시병원_내과소아과응급의학과.csv"
+        if hospital_file.exists():
+            self._normalize_hospitals(hospital_file)
+        
+        # 편의점 데이터
+        convenience_file = localdata_dir / "utf8_서울시 편의점.csv"
+        if convenience_file.exists():
+            self._normalize_convenience_stores(convenience_file)
 
         logger.info(f"총 {len(self.normalized_facilities)}개의 시설 데이터와 {len(self.normalized_subway_stations)}개의 지하철역 데이터 정규화 완료.")
+        
+        # 카운터 상태 로깅
+        logger.info("생성된 facility_id 카운터 상태:")
+        for prefix, count in self.facility_counters.items():
+            if count > 0:
+                logger.info(f"  {prefix}: {count}개")
         
         return {
             "public_facilities": self.normalized_facilities,
@@ -1169,7 +1491,8 @@ class InfraNormalizer:
             if address_info['address_norm']:
                 # 정규화 성공 - 시설 데이터 생성
                 facility_data = {
-                    'category_id': self._get_category_id(facility_type),
+                    'facility_id': self._generate_facility_id(facility_type),
+                    'cd': self._get_facility_cd(facility_type),
                     'name': facility_name,
                     'address_raw': address_info['address_raw'],
                     'address_norm': address_info['address_norm'],
@@ -1191,7 +1514,7 @@ class InfraNormalizer:
                         'retry_success': True,
                         'original_failed_reason': row['error_reason']
                     },
-                    'data_source': f'seoul_{facility_type}',
+                    'data_source': 'openseoul',
                     'geo_extra': address_info['geo_extra']
                 }
                 retry_facilities.append(facility_data)
@@ -1217,6 +1540,192 @@ class InfraNormalizer:
             "retry_failed_addresses": retry_failed_addresses
         }
 
+    def _normalize_sports_facilities(self, file_path: Path):
+        """공공체육시설 정보 정규화"""
+        logger.info(f"공공체육시설 정보 정규화 시작: {file_path}")
+        
+        df = read_csv_with_auto_encoding(file_path, dtype=str)
+        logger.info(f"공공체육시설 데이터 로드: {len(df)}개")
+        
+        for _, row in df.iterrows():
+            try:
+                # 주소 정규화
+                address_info = self._normalize_address(
+                    address_raw=row.get('시설주소', ''),
+                    facility_name=row.get('시설명', ''),
+                    facility_type='gym'
+                )
+                
+                # 시설 정보 구성
+                facility = {
+                    'facility_id': self._generate_facility_id('gym'),
+                    'cd': self._get_facility_cd('gym'),
+                    'name': row.get('시설명', ''),
+                    'address_raw': address_info['address_raw'],
+                    'address_nm': address_info['address_nm'],
+                    'address_id': address_info['address_id'],
+                    'lat': address_info['lat'],
+                    'lon': address_info['lon'],
+                    'phone': row.get('연락처', ''),
+                    'website': row.get('홈페이지', ''),
+                    'operating_hours': f"평일: {row.get('운영시간_평일', '')}, 주말: {row.get('운영시간_주말', '')}, 공휴일: {row.get('운영시간_공휴일', '')}",
+                    'capacity': self._safe_int(row.get('시설규모', '')),
+                    'facility_extra': {
+                        '시설유형': row.get('시설유형', ''),
+                        '운영기관': row.get('운영기관', ''),
+                        '시설대관여부': row.get('시설대관여부', ''),
+                        '시설사용료': row.get('시설사용료', ''),
+                        '주차정보': row.get('주차정보', ''),
+                        '시설종류': row.get('시설종류', ''),
+                        '시설운영상태': row.get('시설운영상태', ''),
+                        '시설편의시설': row.get('시설편의시설', ''),
+                        '비고': row.get('비고', '')
+                    },
+                    'data_source': 'localdata'
+                }
+                
+                self.normalized_facilities.append(facility)
+                
+            except Exception as e:
+                logger.error(f"공공체육시설 정규화 오류: {row.get('시설명', '')} - {e}")
+        
+        logger.info(f"공공체육시설 정규화 완료: {len(df)}개")
+
+    def _normalize_marts(self, file_path: Path):
+        """마트 정보 정규화"""
+        logger.info(f"마트 정보 정규화 시작: {file_path}")
+        
+        df = read_csv_with_auto_encoding(file_path, dtype=str)
+        logger.info(f"마트 데이터 로드: {len(df)}개")
+        
+        for _, row in df.iterrows():
+            try:
+                # 주소 정규화
+                address_info = self._normalize_address(
+                    address_raw=row.get('주소', ''),
+                    facility_name=row.get('상호명', ''),
+                    facility_type='mart'
+                )
+                
+                # 시설 정보 구성
+                facility = {
+                    'facility_id': self._generate_facility_id('mart'),
+                    'cd': self._get_facility_cd('mart'),
+                    'name': row.get('상호명', ''),
+                    'address_raw': address_info['address_raw'],
+                    'address_nm': address_info['address_nm'],
+                    'address_id': address_info['address_id'],
+                    'lat': address_info['lat'],
+                    'lon': address_info['lon'],
+                    'phone': row.get('전화번호', ''),
+                    'facility_extra': {
+                        '업종': row.get('업종', ''),
+                        '자치구': row.get('자치구', '')
+                    },
+                    'data_source': 'localdata'
+                }
+                
+                self.normalized_facilities.append(facility)
+                
+            except Exception as e:
+                logger.error(f"마트 정규화 오류: {row.get('상호명', '')} - {e}")
+        
+        logger.info(f"마트 정규화 완료: {len(df)}개")
+
+    def _normalize_convenience_stores(self, file_path: Path):
+        """편의점 정보 정규화"""
+        logger.info(f"편의점 정보 정규화 시작: {file_path}")
+        
+        df = read_csv_with_auto_encoding(file_path, dtype=str)
+        logger.info(f"편의점 데이터 로드: {len(df)}개")
+        
+        for _, row in df.iterrows():
+            try:
+                # 주소 정규화 (편의점은 좌표가 이미 있으므로 좌표변환은 하지 않음)
+                address_info = self._normalize_address(
+                    address_raw=row.get('소재지전체주소', ''),
+                    facility_name=row.get('사업장명', ''),
+                    facility_type='convenience'
+                )
+                
+                # 기존 좌표 사용 (EPSG5174 좌표계를 WGS84로 변환하지 않고 그대로 사용)
+                lat = self._safe_float(row.get('좌표정보Y(EPSG5174)'))
+                lon = self._safe_float(row.get('좌표정보X(EPSG5174)'))
+                
+                # 시설 정보 구성
+                facility = {
+                    'facility_id': self._generate_facility_id('convenience'),
+                    'cd': self._get_facility_cd('convenience'),
+                    'name': row.get('사업장명', ''),
+                    'address_raw': address_info['address_raw'],
+                    'address_nm': address_info['address_nm'],
+                    'address_id': address_info['address_id'],
+                    'lat': lat,
+                    'lon': lon,
+                    'phone': row.get('소재지전화', ''),
+                    'website': row.get('홈페이지', ''),
+                    'operating_hours': None,  # 운영시간 정보 없음
+                    'is_24h': False,  # 24시간 정보 없음
+                    'is_emergency': False,
+                    'capacity': None,
+                    'grade_level': None,
+                    'facility_extra': {
+                        '소재지면적': row.get('소재지면적', ''),
+                        '도로명전체주소': row.get('도로명전체주소', '')
+                    },
+                    'data_source': 'localdata'
+                }
+                
+                self.normalized_facilities.append(facility)
+                
+            except Exception as e:
+                logger.error(f"편의점 정규화 오류: {row.get('사업장명', '')} - {e}")
+        
+        logger.info(f"편의점 정규화 완료: {len(df)}개")
+
+    def _normalize_hospitals(self, file_path: Path):
+        """병원 정보 정규화"""
+        logger.info(f"병원 정보 정규화 시작: {file_path}")
+        
+        df = read_csv_with_auto_encoding(file_path, dtype=str)
+        logger.info(f"병원 데이터 로드: {len(df)}개")
+        
+        for _, row in df.iterrows():
+            try:
+                # 주소 정규화
+                address_info = self._normalize_address(
+                    address_raw=row.get('주소', ''),
+                    facility_name=row.get('기관명', ''),
+                    facility_type='hospital'
+                )
+                
+                # 시설 정보 구성
+                facility = {
+                    'facility_id': self._generate_facility_id('hospital'),
+                    'cd': self._get_facility_cd('hospital'),
+                    'name': row.get('기관명', ''),
+                    'address_raw': address_info['address_raw'],
+                    'address_nm': address_info['address_nm'],
+                    'address_id': address_info['address_id'],
+                    'lat': address_info['lat'],
+                    'lon': address_info['lon'],
+                    'phone': row.get('전화번호', ''),
+                    'is_emergency': '응급' in str(row.get('진료과목', '')),
+                    'facility_extra': {
+                        '진료과목': row.get('진료과목', ''),
+                        '자치구': row.get('자치구', ''),
+                        '의료기관종별': row.get('의료기관종별', '')
+                    },
+                    'data_source': 'localdata'
+                }
+                
+                self.normalized_facilities.append(facility)
+                
+            except Exception as e:
+                logger.error(f"병원 정규화 오류: {row.get('기관명', '')} - {e}")
+        
+        logger.info(f"병원 정규화 완료: {len(df)}개")
+
 # 예시 사용법 (CLI에서 호출될 때)
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
@@ -1229,7 +1738,7 @@ if __name__ == "__main__":
     
     print("\n--- 정규화된 공공시설 데이터 (일부) ---")
     for i, facility in enumerate(normalized_data["public_facilities"][:5]):
-        print(f"{i+1}. {facility['name']} (Category ID: {facility['category_id']})")
+        print(f"{i+1}. {facility['name']} (Category ID: {facility.get('category_id', 'N/A')})")
 
     print("\n--- 정규화된 지하철역 데이터 (일부) ---")
     for i, station in enumerate(normalized_data["subway_stations"][:5]):
