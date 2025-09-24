@@ -30,6 +30,24 @@ def preprocess_address(addr_raw: str) -> str:
     
     import re
     
+    # 0. 중복 주소 제거 (가장 먼저 적용)
+    # 예: "서울특별시 양천구 목동중앙본로20길33 (목동, 목동골든빌) 서울특별시 양천구 목동중앙본로20길33 (목동, 목동골든빌)" 
+    # -> "서울특별시 양천구 목동중앙본로20길33 (목동, 목동골든빌)"
+    # 더 정확한 중복 제거: 최소 5글자 이상의 의미있는 중복만 제거
+    addr_raw = re.sub(r'(.{5,}?)\s+\1\s*.*$', r'\1', addr_raw)  # 공백 있는 중복 (5글자 이상)
+    # 공백 없는 중복은 더 엄격하게: 최소 10글자 이상
+    addr_raw = re.sub(r'(.{10,}?)\1.*$', r'\1', addr_raw)  # 공백 없는 중복 (10글자 이상)
+    
+    # 0-1. 중복 주소 제거 (더 간단하고 효과적인 방법)
+    # 예: "서울특별시 양천구 목동중앙본로20길33 (목동, 목동골든빌) 서울특별시 양천구 목동중앙본로20길33 (목동, 목동골든빌)"
+    # -> "서울특별시 양천구 목동중앙본로20길33 (목동, 목동골든빌)"
+    
+    # 서울특별시로 시작하는 주소의 중복 제거
+    addr_raw = re.sub(r'(서울특별시\s+[^서울특별시]*?)\s+서울특별시\s+.*$', r'\1', addr_raw)
+    
+    # 서울로 시작하는 주소의 중복 제거
+    addr_raw = re.sub(r'(서울\s+[^서울]*?)\s+서울\s+.*$', r'\1', addr_raw)
+    
     # 1. 건물번호가 비정상적으로 큰 경우 수정 (예: 217 912 -> 217)
     # 도로명 + 건물번호 패턴 찾기
     road_pattern = r'([가-힣]+로\d*[가-힣]*)\s+(\d+)\s+(\d{3,})'
@@ -49,18 +67,76 @@ def preprocess_address(addr_raw: str) -> str:
     addr_raw = re.sub(r'\s+\d+\s*층.*$', '', addr_raw)
     addr_raw = re.sub(r'\s+전층.*$', '', addr_raw)
     addr_raw = re.sub(r'\s+\d+\s*~\s*\d+\s*층.*$', '', addr_raw)
+    addr_raw = re.sub(r'\s+\d+,\d+.*층.*$', '', addr_raw)  # 2,3,4,5층 패턴
+    addr_raw = re.sub(r'\s+\d+[Ff].*$', '', addr_raw)  # 1F, 2f 패턴
+    # 추가 층수 패턴들
+    addr_raw = re.sub(r'\s+지상\d+\s*~\s*\d+\s*층.*$', '', addr_raw)  # 지상1층~3층
+    addr_raw = re.sub(r'\s+지하\d+\s*~\s*\d+\s*층.*$', '', addr_raw)  # 지하1층~3층
+    addr_raw = re.sub(r'\s+지상\d+\s*층.*$', '', addr_raw)  # 지상1층
+    addr_raw = re.sub(r'\s+지하\d+\s*층.*$', '', addr_raw)  # 지하1층
     
     # 4. 건물명 제거 (괄호 안의 내용)
     addr_raw = re.sub(r'\s*\([^)]*\)\s*', ' ', addr_raw)
     addr_raw = re.sub(r'\s+[가-힣]+생활.*$', '', addr_raw)
     addr_raw = re.sub(r'\s+[가-힣]+빌.*$', '', addr_raw)
+    # 추가 건물명 패턴들
+    addr_raw = re.sub(r'\s+애스트리\d+.*$', '', addr_raw)  # 애스트리23
+    addr_raw = re.sub(r'\s+사는자리.*$', '', addr_raw)  # 사는자리
+    addr_raw = re.sub(r'\s+써드플레이스.*$', '', addr_raw)  # 써드플레이스 홍은7
+    addr_raw = re.sub(r'\s+코이노니아.*$', '', addr_raw)  # 코이노니아스테이
+    addr_raw = re.sub(r'\s+맑은구름집.*$', '', addr_raw)  # 맑은구름집
+    addr_raw = re.sub(r'\s+너나들이.*$', '', addr_raw)  # 너나들이
+    addr_raw = re.sub(r'\s+화곡동.*$', '', addr_raw)  # 화곡동 공동체주택
+    # 추가 건물명 패턴들 (sohouse 실패 케이스)
+    addr_raw = re.sub(r'\s+녹색친구들.*$', '', addr_raw)  # 녹색친구들 대조, 녹색친구들 창천
+    addr_raw = re.sub(r'\s+함께주택.*$', '', addr_raw)  # 함께주택6호, 함께주택5호
+    addr_raw = re.sub(r'\s+주상복합건물.*$', '', addr_raw)  # 주상복합건물
     
-    # 5. 공백 정리
+    # 5. 지번주소 정리 (~동 숫자-숫자 뒤의 모든 문자 제거)
+    # 예: "서울 종로구 동숭동 192-6 1" -> "서울 종로구 동숭동 192-6"
+    addr_raw = re.sub(r'([가-힣]+동\s+\d+-\d+)\s+.*$', r'\1', addr_raw)
+    
+    # 6. 도로명+건물번호 분리 (일반화된 패턴)
+    # 6-1. *로*길+숫자 -> *로*길 숫자 (예: 북악산로3길44 -> 북악산로3길 44)
+    # 더 정확한 패턴으로 수정: ~로로 끝나고 ~길로 끝나는 패턴
+    addr_raw = re.sub(r'([가-힣]+로\d*[가-힣]*길)(\d+[-\d]*)', r'\1 \2', addr_raw)
+    
+    # 6-2. *로+숫자 -> *로 숫자 (길이 없는 경우만)
+    # 단, ~길이 포함된 경우는 제외 (연희로18길 -> 연희로18길 유지)
+    if '길' not in addr_raw:
+        addr_raw = re.sub(r'([가-힣]+로)(\d+[-\d]*)', r'\1 \2', addr_raw)
+    
+    # 7. 도로명주소 정리 (~길숫자(-숫자) 또는 ~길 숫자(-숫자) 뒤의 모든 문자 제거)
+    # 예: "서울 서대문구 연희로18길 36 애스트리23" -> "서울 서대문구 연희로18길 36"
+    # ~길숫자(-숫자) 패턴 뒤의 모든 문자 제거
+    addr_raw = re.sub(r'([가-힣]+길\d+[-\d]*)\s+.*$', r'\1', addr_raw)
+    # ~길 숫자(-숫자) 패턴 뒤의 모든 문자 제거
+    addr_raw = re.sub(r'([가-힣]+길\s+\d+[-\d]*)\s+.*$', r'\1', addr_raw)
+    # ~로 숫자(-숫자) 패턴 뒤의 모든 문자 제거 (길이 없는 경우)
+    addr_raw = re.sub(r'([가-힣]+로\s+\d+[-\d]*)\s+.*$', r'\1', addr_raw)
+    
+    # 8. ~로 주소에서 ~로 제거 (길이 없는 경우)
+    # 예: "서울특별시 마포구 와우산로 상수동 321-6" -> "서울특별시 마포구 상수동 321-6"
+    # ~길이 없는 주소에서만 ~로 제거
+    if '길' not in addr_raw and '로' in addr_raw:
+        addr_raw = re.sub(r'([가-힣]+구)\s+([가-힣]+로)\s+([가-힣]+동)', r'\1 \3', addr_raw)
+    
+    # 9. 지번 주소 뒤 추가 정보 제거 (증산동 202-25 등)
+    # 예: "증산로9길 26-21 증산동 202-25" -> "증산로9길 26-21"
+    addr_raw = re.sub(r'([가-힣]+로\d*[가-힣]*길\s+\d+[-\d]*)\s+[가-힣]+동\s+\d+[-\d]*.*$', r'\1', addr_raw)
+    # 추가 지번 주소 제거 (서울시 금천구 독산동 964-42 등)
+    addr_raw = re.sub(r'([가-힣]+로\d*[가-힣]*길\s+\d+[-\d]*)\s+서울[시특별시]*\s+[가-힣]+구\s+[가-힣]+동\s+\d+[-\d]*.*$', r'\1', addr_raw)
+    
+    # 10. 마침표 및 불필요한 문자 제거
+    addr_raw = re.sub(r'\.+$', '', addr_raw)  # 끝의 마침표 제거
+    addr_raw = re.sub(r'\s+$', '', addr_raw)  # 끝의 공백 제거
+    
+    # 11. 공백 정리
     addr_raw = re.sub(r'\s+', ' ', addr_raw).strip()
     
     return addr_raw
 
-def postprocess_enrich(record: dict) -> dict:
+def postprocess_enrich(record: dict, normalizer_instance=None) -> dict:
     """Enrich the parsed record with address, price, and typed enums."""
     # 1) Address
     addr_raw = record.get("address")
@@ -90,6 +166,18 @@ def postprocess_enrich(record: dict) -> dict:
                 if attempt == 1:  # 마지막 시도
                     logger.error(f"주소 정규화 최종 실패: {addr_raw} - {e}")
                     record.setdefault("_rejects", []).append({"field":"address","reason":str(e)})
+                    
+                    # 실패한 주소 정보 수집
+                    if normalizer_instance:
+                        failed_data = {
+                            "platform": record.get("platform", "unknown"),
+                            "house_name": record.get("house_name", ""),
+                            "address_raw": addr_raw,
+                            "address_processed": addr_processed,
+                            "error_reason": str(e),
+                            "timestamp": datetime.now().isoformat()
+                        }
+                        normalizer_instance.failed_addresses.append(failed_data)
     else:
         logger.warning("주소가 없습니다")
 
@@ -155,6 +243,7 @@ class DataNormalizer:
         self.units = []
         self.unit_features = []
         self.notice_tags = []
+        self.failed_addresses = []  # 주소 정규화 실패 데이터
         
     def normalize_raw_data(self, raw_csv_path: Path) -> Dict[str, List[Dict]]:
         """
@@ -179,6 +268,9 @@ class DataNormalizer:
             except Exception as e:
                 logger.error(f"행 {idx} 정규화 실패: {e}")
                 continue
+        
+        # 실패한 주소 데이터를 CSV로 저장
+        self._save_failed_addresses(raw_csv_path)
                 
         return {
             'platforms': list(self.platforms.values()),
@@ -203,6 +295,8 @@ class DataNormalizer:
                 logger.warning(f"JSON 파싱 실패 {kv_json_path}: {e}")
 
         record = {
+            "platform": str(row.get('platform', 'unknown')),
+            "house_name": str(row.get('house_name', '')),
             "address": str(row.get('address', '')).strip(),
             "building_details": {"address": str(row.get('address', '')).strip()},
             # 플랫폼별 추출 결과(있으면 훅이 사용)
@@ -212,7 +306,7 @@ class DataNormalizer:
         }
 
         # 0-1) 후처리 훅 실행(주소/가격/유형)
-        enriched = postprocess_enrich(record)
+        enriched = postprocess_enrich(record, self)
 
         # 0-2) 하드 실패(격리 대상)이면 스킵
         if enriched.get("_rejects"):
@@ -264,7 +358,26 @@ class DataNormalizer:
             si_do = addr.get("sido", "")
             si_gun_gu = addr.get("sigungu", "")
             eupmyeon_dong = addr.get("eupmyeon_dong", "")
+            
+            # 현재 주소 정보 추출
+            road_full = addr.get("road_full", "")
             jibun_full = addr.get("jibun_full", "")
+            
+            # 도로명주소가 있으면 지번주소 조회 시도
+            if road_full:
+                try:
+                    jibun_result = normalize_address(road_full, reverse=True)
+                    jibun_full = jibun_result.get("jibun_full", jibun_full)
+                except:
+                    pass  # 기존 jibun_full 유지
+            
+            # 지번주소가 있으면 도로명주소 조회 시도  
+            if jibun_full:
+                try:
+                    road_result = normalize_address(jibun_full)
+                    road_full = road_result.get("road_full", road_full)
+                except:
+                    pass  # 기존 road_full 유지
             
             # 시군구/법정동/지번 형태의 정규화된 주소 생성
             normalized_address = f"{si_do} {si_gun_gu} {eupmyeon_dong}"
@@ -277,17 +390,15 @@ class DataNormalizer:
             
             self.addresses[dedup_key] = {
                 'id': address_id,
-                'address_raw': addr.get("road_full") or addr.get("jibun_full"),
+                'address_raw': road_full or jibun_full,
                 'address_norm': normalized_address,
                 'si_do': si_do,
                 'si_gun_gu': si_gun_gu,
                 'eupmyeon_dong': eupmyeon_dong,
-                'road_name': None,  # 도로명 주소 제거
-                'zipcode': None,
+                'road_full': road_full,  # 새로 추가
+                'jibun_full': jibun_full,  # 새로 추가
                 'lat': addr.get("y"),   # API returns y(lat), x(lon)
                 'lon': addr.get("x"),
-                'bcode': addr.get("bcode"),
-                'jibun_full': jibun_full,
             }
         return self.addresses[dedup_key]['id']
 
@@ -504,3 +615,29 @@ class DataNormalizer:
         """정수 파싱"""
         numeric = self._parse_numeric(value)
         return int(numeric) if numeric is not None else None
+    
+    def _save_failed_addresses(self, raw_csv_path: Path):
+        """실패한 주소 데이터를 CSV로 저장"""
+        if not self.failed_addresses:
+            logger.info("주소 정규화 실패 데이터가 없습니다.")
+            return
+        
+        # 저장 경로 설정: backend/data/normalized
+        normalized_dir = Path("backend/data/normalized")
+        normalized_dir.mkdir(parents=True, exist_ok=True)
+        
+        # 파일명 생성 (날짜별)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        failed_csv_path = normalized_dir / f"failed_addresses_{timestamp}.csv"
+        
+        # CSV 저장
+        failed_df = pd.DataFrame(self.failed_addresses)
+        failed_df.to_csv(failed_csv_path, index=False, encoding='utf-8-sig')
+        
+        logger.info(f"주소 정규화 실패 데이터 저장: {failed_csv_path} ({len(self.failed_addresses)}건)")
+        
+        # 실패 통계 출력
+        platform_stats = failed_df['platform'].value_counts()
+        logger.info("주소 정규화 실패 통계:")
+        for platform, count in platform_stats.items():
+            logger.info(f"  - {platform}: {count}건")

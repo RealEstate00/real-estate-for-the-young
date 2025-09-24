@@ -37,7 +37,9 @@ CREATE TABLE IF NOT EXISTS housing.addresses (
     address_norm TEXT,                       -- 정규 도로명(또는 정규 지번)
     si_do     VARCHAR(50),
     si_gun_gu VARCHAR(50),
-    road_name VARCHAR(100),
+    si_gun_gu_dong VARCHAR(50),
+    road_full VARCHAR(100),
+    jibun_full VARCHAR(100),
     zipcode   VARCHAR(10),
     lat DECIMAL(10, 8),                      -- latitude
     lon DECIMAL(11, 8),                      -- longitude

@@ -11,8 +11,8 @@ CREATE SCHEMA IF NOT EXISTS housing;
 -- 공공시설 관련 스키마  
 CREATE SCHEMA IF NOT EXISTS infra;
 
--- RTMS 관련 스키마 (실거래가)
-CREATE SCHEMA IF NOT EXISTS rtms;
+-- -- RTMS 관련 스키마 (실거래가)
+-- CREATE SCHEMA IF NOT EXISTS rtms;
 
 -- ===========================================
 -- 2. 스키마별 테이블 구조

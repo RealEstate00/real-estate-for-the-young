@@ -1,0 +1,9 @@
+streamlit
+requests
+pandas
+certifi
+urllib3
+plotly
+python-dotenv
+
+

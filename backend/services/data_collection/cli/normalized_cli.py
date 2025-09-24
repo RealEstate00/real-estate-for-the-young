@@ -77,7 +77,7 @@ def find_latest_raw_data(platform: str = None, date: str = None) -> List[Path]:
     return raw_files
 
 def get_normalized_output_path(raw_file: Path) -> Path:
-    """정규화된 데이터 출력 경로 생성: data/normalized/날짜/플랫폼명/"""
+    """정규화된 데이터 출력 경로 생성: data/normalized/크롤링날짜/플랫폼명/"""
     # raw 경로에서 날짜와 플랫폼명 추출
     # 예: data/raw/sohouse/2025-09-15__20250915T021038/raw.csv
     path_parts = raw_file.parts
@@ -95,7 +95,7 @@ def get_normalized_output_path(raw_file: Path) -> Path:
     if not platform_name or not date_str:
         raise ValueError(f"플랫폼명 또는 날짜를 추출할 수 없습니다: {raw_file}")
     
-    # backend/data/normalized/날짜/플랫폼명/ 구조로 생성
+    # backend/data/normalized/크롤링날짜/플랫폼명/ 구조로 생성
     output_path = Path("backend") / "data" / "normalized" / date_str / platform_name
     output_path.mkdir(parents=True, exist_ok=True)
     
@@ -125,6 +125,13 @@ def normalize_data(raw_csv_path: str) -> bool:
                 json.dump(data, f, ensure_ascii=False, indent=2, default=str)
             print(f"✅ {table_name}: {len(data)}개 레코드 저장 → {output_file}")
         
+        # 실패한 주소 통계 출력
+        if hasattr(normalizer, 'failed_addresses') and normalizer.failed_addresses:
+            print(f"⚠️  주소 정규화 실패: {len(normalizer.failed_addresses)}건")
+            print(f"📄 실패 데이터 저장: backend/data/normalized/failed_addresses_*.csv")
+        else:
+            print("✅ 주소 정규화 실패 없음")
+        
         print(f"✅ 정규화 완료: {output_path}")
         return True
         
@@ -145,6 +152,13 @@ def load_to_db(raw_csv_path: str, db_url: str = None) -> bool:
         # 정규화
         normalizer = DataNormalizer()
         normalized_data = normalizer.normalize_raw_data(raw_path)
+        
+        # 실패한 주소 통계 출력
+        if hasattr(normalizer, 'failed_addresses') and normalizer.failed_addresses:
+            print(f"⚠️  주소 정규화 실패: {len(normalizer.failed_addresses)}건")
+            print(f"📄 실패 데이터 저장: backend/data/normalized/failed_addresses_*.csv")
+        else:
+            print("✅ 주소 정규화 실패 없음")
         
         # DB URL 설정
         if not db_url:

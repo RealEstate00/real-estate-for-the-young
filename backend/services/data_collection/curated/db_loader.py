@@ -10,7 +10,8 @@ from pathlib import Path
 from typing import Dict, List, Any, Optional
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import SQLAlchemyError
-from psycopg import Connection
+from psycopg2 import connect
+from psycopg2.extensions import connection as Connection
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +23,7 @@ class NormalizedDataLoader:
         self.connection = None
         self.platform_id_map = {}  # source -> platform_id 매핑
         self.address_id_map = {}   # address_id -> db_id 매핑
-        self.notice_id_map = {}    # source_key -> notice_id 매핑
+        self.notice_id_map = {}    # source_key -> notice_id 매핑, internal_id -> notice_id 매핑
         self.units_cache = []      # units 데이터 캐시 (unit_features 매핑용)
     
     def __enter__(self):
@@ -174,14 +175,26 @@ class NormalizedDataLoader:
             if 'geo_extra' not in address_data:
                 address_data['geo_extra'] = None
             
-            # INSERT 쿼리 (housing 스키마 사용)
-            query = """
-            INSERT INTO housing.addresses (address_raw, address_norm, si_do, si_gun_gu, road_name, zipcode, lat, lon, geo_extra, created_at)
-            VALUES (:address_raw, :address_norm, :si_do, :si_gun_gu, :road_name, :zipcode, :lat, :lon, :geo_extra, CURRENT_TIMESTAMP)
-            RETURNING id
+            # 먼저 기존 주소가 있는지 확인
+            check_query = """
+            SELECT id FROM housing.addresses WHERE address_norm = :address_norm
             """
-            result = self.connection.execute(text(query), address_data).fetchone()
-            address['db_id'] = result[0] if result else None
+            existing = self.connection.execute(text(check_query), {'address_norm': address_data['address_norm']}).fetchone()
+            
+            if existing:
+                # 기존 주소가 있으면 해당 ID 사용
+                address['db_id'] = existing[0]
+                logger.debug(f"기존 주소 사용: {address_data['address_norm']} -> ID {existing[0]}")
+            else:
+                # 새 주소 삽입
+                insert_query = """
+                INSERT INTO housing.addresses (address_raw, address_norm, si_do, si_gun_gu, road_name, zipcode, lat, lon, geo_extra, created_at)
+                VALUES (:address_raw, :address_norm, :si_do, :si_gun_gu, :road_name, :zipcode, :lat, :lon, :geo_extra, CURRENT_TIMESTAMP)
+                RETURNING id
+                """
+                result = self.connection.execute(text(insert_query), address_data).fetchone()
+                address['db_id'] = result[0] if result else None
+                logger.debug(f"새 주소 삽입: {address_data['address_norm']} -> ID {address['db_id']}")
             
             # 매핑 테이블 업데이트
             if 'id' in address:
@@ -280,6 +293,9 @@ class NormalizedDataLoader:
             # 매핑 테이블 업데이트
             if 'source_key' in notice:
                 self.notice_id_map[notice['source_key']] = notice['db_id']
+            # 내부 ID 매핑도 같은 맵에 추가
+            if 'id' in notice:
+                self.notice_id_map[notice['id']] = notice['db_id']
     
     def _load_units(self, units: List[Dict]):
         """유닛 데이터 저장"""
@@ -389,12 +405,13 @@ class NormalizedDataLoader:
         logger.info(f"공고 태그 데이터 저장: {len(notice_tags)}개")
         
         for tag in notice_tags:
-            # notice_id 매핑
+            # notice_id 매핑 (내부 ID 사용)
             notice_id = None
             if 'notice_id' in tag and tag['notice_id'] in self.notice_id_map:
                 notice_id = self.notice_id_map[tag['notice_id']]
             
             if notice_id is None:
+                logger.debug(f"notice_tags 매핑 실패: notice_id={tag.get('notice_id')}, tag={tag.get('tag')}")
                 continue
                 
             tag_data = {

@@ -20,7 +20,7 @@ def get_engine():
     password = os.getenv("PG_PASSWORD", "post1234")
     db = os.getenv("PG_DB", "rey")
     # Optional schema search_path: add options if needed
-    url = f"postgresql+psycopg://{user}:{password}@{host}:{port}/{db}"
+    url = f"postgresql+psycopg2://{user}:{password}@{host}:{port}/{db}"
     eng = create_engine(url, pool_pre_ping=True, pool_recycle=3600, future=True)
     return eng
 

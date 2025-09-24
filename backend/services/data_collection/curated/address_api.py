@@ -73,7 +73,7 @@ class AddressAPI:
         self.timeout = timeout
         self.session = requests.Session()
 
-    def search(self, keyword: str, count_per_page: int = 1, current_page: int = 1) -> dict:
+    def search(self, keyword: str, count_per_page: int = 1, current_page: int = 1, reverse: bool = False) -> dict:
         """Call the search endpoint and return parsed JSON (or raise)."""
         params = {
             "confmKey": self.api_key,
@@ -86,6 +86,10 @@ class AddressAPI:
             "relJibun": "Y",  # include related jibun
             "hemdNm": "Y",    # include emd (legal dong) name
         }
+        
+        # reverse=True일 때는 도로명주소 → 지번주소 변환을 위한 추가 파라미터
+        if reverse:
+            params["admCd"] = "Y"  # 행정구역코드 포함
         resp = self.session.get(self.base_url, params=params, timeout=self.timeout)
         resp.raise_for_status()
         data = resp.json()
@@ -94,7 +98,7 @@ class AddressAPI:
             raise AddressNormalizerError(f"Juso API error: {msg}")
         return data
 
-    def normalize_one(self, address: str, retries: int = 2, backoff: float = 0.3) -> dict:
+    def normalize_one(self, address: str, retries: int = 2, backoff: float = 0.3, reverse: bool = False) -> dict:
         """
         Normalize a single raw address string into a canonical dict used by pipeline.
 
@@ -109,7 +113,7 @@ class AddressAPI:
         last_err = None
         for attempt in range(retries + 1):
             try:
-                data = self.search(address, count_per_page=1)
+                data = self.search(address, count_per_page=1, reverse=reverse)
                 j = _extract_first_juso(data)
                 if not j:
                     raise AddressNormalizerError("No match from Juso API")
@@ -117,12 +121,17 @@ class AddressAPI:
                 # Notes:
                 # - entX/entY are coordinates returned by the API (WGS84 lon/lat).
                 # - Some accounts/services may return different key names; adapt here if needed.
+                # 괄호 안의 내용 제거 (예: "서울특별시 동대문구 천호대로 425 (장안동)" -> "서울특별시 동대문구 천호대로 425")
+                road_addr = j.get("roadAddr", "")
+                if road_addr and "(" in road_addr:
+                    road_addr = road_addr.split("(")[0].strip()
+                
                 out = {
                     "sido": j.get("siNm"),
                     "sigungu": j.get("sggNm"),
                     "eupmyeon_dong": j.get("emdNm"),
                     "bcode": j.get("bcode"),
-                    "road_full": j.get("roadAddr"),
+                    "road_full": road_addr,
                     "jibun_full": j.get("jibunAddr"),
                     "x": _to_float(j.get("entX")),  # longitude
                     "y": _to_float(j.get("entY")),  # latitude
@@ -167,10 +176,14 @@ class AddressAPI:
 
 # ----- Module-level convenience API ------------------------------------------
 # Keep a single function used by the normalization hook to avoid importing the client everywhere.
-def normalize_address(raw: str) -> dict:
+def normalize_address(raw: str, reverse: bool = False) -> dict:
     """
     Convenience wrapper used by postprocess_enrich():
     returns the canonical dict consumed by the pipeline.
+    
+    Args:
+        raw: 주소 문자열
+        reverse: True면 도로명→지번, False면 지번→도로명
     """
     client = AddressAPI()
-    return client.normalize_one(raw)
+    return client.normalize_one(raw, reverse=reverse)

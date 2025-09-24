@@ -34,13 +34,16 @@ def main():
     elif args.source == "seoul":
         if args.service == "all":
             all_services = [
-                "SearchSTNBySubwayLineInfo",
+                "SearchSTNBySubwayLineInfo",  # 주소없는 지하철역(호선정보 있음)
                 "TbPharmacyOperateInfo",
                 "ChildCareInfo",
                 "childSchoolInfo",
                 "neisSchoolInfo",
                 "SebcCollegeInfoKor",
-                "SearchParkInfoService"
+                "SearchParkInfoService",
+                "vBigJtrFlrCbOuln",
+                "busStopLocationXyInfo"
+                "StationAdresTelno"   # 주소있는 지하철역(호선정보 불완전)
             ]
             for service in all_services:
                 print(f"[INFO] 서울 API 수집 - {service} 시작...")

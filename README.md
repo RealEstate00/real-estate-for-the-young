@@ -111,7 +111,7 @@ uv pip install -e .
 # 4. Playwright 브라우저 설치 (크롤링용)
 playwright install chromium
 
-# 5. PostgreSQL 드라이버 설치 (DB 저장 시)
+# 5. PostgreSQL 드라이버 설치 (DB 저장 시)  
 uv pip install -r backend/requirements.txt
 
 # 6. 데이터베이스 테이블 생성
@@ -162,9 +162,8 @@ data-db list
 
 ```bash
 # 서울 열린데이터 수집 (모든 서비스 - 7개)
-data-collection api load --csv --fresh
+data-collection api load --csv
 # 수집 데이터: 지하철역, 약국, 어린이집, 초등학교, 학교, 대학교, 공원
-# 수집 데이터의 중복없이 진행을 위하여 --fresh 사용
 
 # 특정 서비스만 수집
 data-collection api public --csv    # 지하철역 정보만 (SearchSTNBySubwayLineInfo)
@@ -175,8 +174,11 @@ data-collection api load
 data-collection api public
 data-collection api housing
 
-# 로컬데이터 포털 수집 (API 권한 필요)
+# 로컬데이터 포털 변동분 수집 (API 권한 필요)  수정예정
 data-collection api load --source localdata --csv
+
+# 서울 API 데이터를 DB에 적재 (새로운 방식)
+data-load infra
 ```
 
 ### 🏠 주택 공고 크롤링
@@ -188,13 +190,13 @@ data-collection crawl sohouse
 # 공동체주택 공고 크롤링
 data-collection crawl cohouse
 
-# 청년안심주택 공고 크롤링
+# 청년안심주택 공고 크롤링  -> X
 data-collection crawl youth
 
-# LH공사 공고 크롤링
+# LH공사 공고 크롤링 -> X
 data-collection crawl lh
 
-# SH공사 공고 크롤링
+# SH공사 공고 크롤링 -> X
 data-collection crawl sh
 ```
 
@@ -207,16 +209,21 @@ data-collection crawl sh
 source .venv/bin/activate
 
 # 1. 데이터 크롤링
-data-collection crawl all --fresh
+data-collection crawl sohouse
+data-collection crawl cohouse
 
 # 2. 데이터 정규화 (JSON 파일 생성)
-data-collection normalized process --platform all
+data-collection normalized process --platform sohouse
+data-collection normalized process --platform cohouse
 
 # 3. DB 스키마 생성 (최초 1회만)
 data-db create
 
 # 4. 정규화된 데이터를 DB에 적재
-data-load --data-dir backend/data/normalized --verbose
+data-load housing --data-dir backend/data/normalized
+
+# 5. 서울 API 데이터를 DB에 적재 (새로운 방식)
+data-load infra
 ```
 
 #### 📋 단계별 상세 실행 방법
@@ -231,6 +238,8 @@ source .venv/bin/activate
 data-collection normalized process --platform cohouse
 data-collection normalized process --platform sohouse
 data-collection normalized process --platform youth
+
+data-collection normalized process --platform infra
 
 # 모든 플랫폼 정규화
 data-collection normalized process --platform all
@@ -247,16 +256,21 @@ data-db create
 
 ```bash
 # 정규화된 데이터를 PostgreSQL에 적재
-data-load --data-dir backend/data/normalized
+data-load housing --data-dir backend/data/normalized  
 
 # 특정 디렉토리 지정
-data-load --data-dir backend/data/normalized/2025-09-19__20250919T093742
+data-load housing --data-dir backend/data/normalized/2025-09-20__20250920T165754
 
 # 상세 로그와 함께 실행
-data-load --data-dir backend/data/normalized --verbose
+data-load housing --data-dir backend/data/normalized --verbose
+
+data-load infra --data-dir backend/data/normalized --verbose
+
+# 서울 API 데이터를 DB에 적재 (새로운 방식)
+data-load infra
 
 # 특정 DB URL 지정
-data-load --data-dir backend/data/normalized --db-url "postgresql+psycopg://postgres:post1234@localhost:5432/rey"
+data-load housing --data-dir backend/data/normalized --db-url "postgresql+psycopg2://postgres:post1234@localhost:5432/rey"
 
 ```
 
@@ -271,6 +285,8 @@ data-load --data-dir backend/data/normalized --db-url "postgresql+psycopg://post
 5. **neisSchoolInfo** - 학교 정보 (1000건)
 6. **SebcCollegeInfoKor** - 대학교 정보 (64건)
 7. **SearchParkInfoService** - 공원 정보 (131건)
+8. **"vBigJtrFlrCbOuln"** - 주택인허가정보(47만건)
+9. **"busStopLocationXyInfo"** - 버스정류소(위도경도데이터만 존재)
 
 **저장 위치:** `backend/data/api_pull/openseoul/`
 
@@ -1101,7 +1117,7 @@ docker-compose down
 ### 🔧 개발 환경 설정
 
 ```bash
-# 1. 환경 변수 설정
+# 1. 환경 변수 설정 -> .env 파일 생성됨
 cp env.example .env
 
 # 2. Docker 컨테이너 실행
