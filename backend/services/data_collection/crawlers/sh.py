@@ -11,7 +11,7 @@ from .base import (
     make_record, write_text, ensure_dirs, platform_fixed_id, sanity_check_address, run_dir
 )
 from ..parsers.parsers import (
-    parse_house_name, parse_address_strict, parse_occupancy_type, 
+    parse_house_name, parse_address_strict, parse_building_type, 
     parse_eligibility, extract_platform_intro_text, filter_sh_announcement_title
 )
 from .pagination import collect_details_with_fallbacks
@@ -71,7 +71,7 @@ class HappyHousingCrawler(BaseCrawler):
                         # 데이터 추출
                         house_name = parse_house_name(page, title)
                         address = parse_address_strict(page)
-                        building_type = parse_occupancy_type(page)
+                        building_type = parse_building_type(page)
                         eligibility = parse_eligibility(page)
                         
                         # 이미지 다운로드
@@ -177,7 +177,7 @@ class SHAnnouncementCrawler(BaseCrawler):
                         # 데이터 추출
                         house_name = parse_house_name(page, title)
                         address = parse_address_strict(page)
-                        building_type = parse_occupancy_type(page)
+                        building_type = parse_building_type(page)
                         eligibility = parse_eligibility(page)
                         
                         # 이미지 다운로드
@@ -231,7 +231,7 @@ class SHAnnouncementCrawler(BaseCrawler):
         
         self.progress.update(f"[COMPLETE] SH Announcement: {len(self.rows)} records")
     
-    def _download_images_platform_specific(self, page, output_dir: Path, house_name: str, index: int) -> tuple[list[str], list[str]]:
+    def _download_images_platform_specific(self, page, output_dir: Path, house_name: str, index: int, unit_index: int = 0) -> tuple[list[str], list[str]]:
         """행복주택 이미지 다운로드 로직 (기본 로직 + 평면도 분리)"""
         image_paths = []
         floor_plan_paths = []

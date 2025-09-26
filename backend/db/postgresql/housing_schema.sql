@@ -34,24 +34,30 @@ ON CONFLICT (code) DO NOTHING;
 CREATE TABLE IF NOT EXISTS housing.addresses (
     id SERIAL PRIMARY KEY,
     address_raw  TEXT NOT NULL,              -- 원문(지번/자유형)
-    address_norm TEXT,                       -- 정규 도로명(또는 정규 지번)
-    si_do     VARCHAR(50),
-    si_gun_gu VARCHAR(50),
-    road_name VARCHAR(100),
-    zipcode   VARCHAR(10),
+    ctpv_nm VARCHAR(50),                     -- 시도명
+    sgg_nm VARCHAR(50),                      -- 시군구명
+    emd_cd VARCHAR(10),                      -- 읍면동코드
+    emd_nm VARCHAR(50),                      -- 읍면동명
+    road_name_full TEXT,                     -- 도로명주소 전체
+    jibun_name_full TEXT,                    -- 지번주소 전체
+    main_jibun VARCHAR(20),                  -- 주지번
+    sub_jibun VARCHAR(20),                   -- 부지번
+    building_name VARCHAR(200),              -- 건물명
+    building_main_no VARCHAR(20),            -- 건물주번호
+    building_sub_no VARCHAR(20),             -- 건물부번호
     lat DECIMAL(10, 8),                      -- latitude
     lon DECIMAL(11, 8),                      -- longitude
-    geo_extra JSONB,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
 -- dedup/geo indexes
-CREATE UNIQUE INDEX IF NOT EXISTS uq_addresses_norm
-  ON housing.addresses(address_norm) WHERE address_norm IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_addresses_location
+  ON housing.addresses(emd_cd, road_name_full, building_main_no) 
+  WHERE emd_cd IS NOT NULL;
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_addresses_raw
   ON housing.addresses(address_raw)
-  WHERE address_raw IS NOT NULL AND address_norm IS NULL;
+  WHERE address_raw IS NOT NULL;
 
 CREATE INDEX IF NOT EXISTS idx_addresses_lat_lon ON housing.addresses(lat, lon);
 

@@ -53,7 +53,7 @@ class YouthCrawler(BaseCrawler):
         return default_json_filter(kv_pairs, platform_specific_fields)
 
     def _download_images_platform_specific(
-        self, page, output_dir: Path, house_name: str, index: int
+        self, page, output_dir: Path, house_name: str, index: int, unit_index: int = 0
     ) -> tuple[list[str], list[str]]:
         """Youth images + floor plans (generic selectors; platform is heterogeneous)."""
         from .base import download_images_from

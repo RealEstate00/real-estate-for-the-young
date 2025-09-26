@@ -36,9 +36,9 @@ SO_COMM_LIST = f"{SO_BASE}/coHouse/pgm/home/cohome/list.do?menuNo=200043"
 
 # -------------CSV header -------------
 RAW_HEADER = [
-    "record_id", "platform", "platform_id", "house_name", "address",
+    "notice_id", "platform", "platform_id", "house_name", "address",
     "unit_type", "building_type", "theme", "subway_station", "eligibility",
-    "last_modified", "crawl_date", "list_url", "detail_url", "image_paths", "html_path",
+    "last_modified", "crawl_date", "list_url", "detail_url", "image_paths", "floorplan_paths", "html_path",
     "detail_text_path", "kv_json_path", "crawled_at", "unit_index"
 ]
 
@@ -238,7 +238,7 @@ def open_detail(page, base_for_referer: str, descriptor: dict, progress: Progres
         try:
             robust_goto(page, url, progress, label="DETAIL")
             # 페이지가 제대로 로드되었는지 확인
-            page.wait_for_load_state("networkidle", timeout=5000)
+            page.wait_for_load_state("networkidle", timeout=8000)
             
             # 에러 페이지인지 확인
             if "정보가 없습니다" in page.content() or "에러안내" in page.content():
@@ -248,7 +248,7 @@ def open_detail(page, base_for_referer: str, descriptor: dict, progress: Progres
                     try:
                         progress.update(f"[ALT] Trying alternative URL {i+1}: {alt_url}")
                         robust_goto(page, alt_url, progress, label="DETAIL_ALT")
-                        page.wait_for_load_state("networkidle", timeout=5000)
+                        page.wait_for_load_state("networkidle", timeout=8000)
                         
                         # 성공적인 페이지인지 확인
                         if "정보가 없습니다" not in page.content() and "에러안내" not in page.content():
@@ -264,7 +264,7 @@ def open_detail(page, base_for_referer: str, descriptor: dict, progress: Progres
                 try:
                     progress.update(f"[ALT] Trying alternative URL {i+1}: {alt_url}")
                     robust_goto(page, alt_url, progress, label="DETAIL_ALT")
-                    page.wait_for_load_state("networkidle", timeout=5000)
+                    page.wait_for_load_state("networkidle", timeout=8000)
                     
                     # 성공적인 페이지인지 확인
                     if "정보가 없습니다" not in page.content() and "에러안내" not in page.content():
@@ -431,10 +431,10 @@ def generate_crawler_id(platform: str, platform_key: str, object_type: str = "no
     
     return base_id
 
-def generate_stable_record_id(platform: str, platform_key: str, list_url: str, detail_url: str, house_name: str, unit_index: int) -> str:
+def generate_stable_notice_id(platform: str, platform_key: str, list_url: str, detail_url: str, house_name: str, unit_index: int = 0) -> str:
     """
-    안정적인 record_id 생성 (기존 로직 유지)
-    platform + platform_key + URLs + house_name + unit_index 기반
+    안정적인 notice_id 생성 (공고 레벨)
+    platform + platform_key + URLs + house_name 기반 (unit_index 무시)
     """
     from hashlib import sha256
     from urllib.parse import urlparse
@@ -451,28 +451,27 @@ def generate_stable_record_id(platform: str, platform_key: str, list_url: str, d
         # 쿼리 파라미터 제거하고 안정적인 부분만 사용
         stable_detail_url = f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
     
-    # ID 생성용 문자열 구성
+    # ID 생성용 문자열 구성 (unit_index 제외 - 공고 레벨 ID)
     id_components = [
         platform,
         platform_key,
         stable_list_url,
         stable_detail_url,
-        house_name or "",
-        str(unit_index)
+        house_name or ""
     ]
     
     id_string = "|".join([comp for comp in id_components if comp])
     hash_part = sha256(id_string.encode('utf-8')).hexdigest()[:12]
     
-    return f"{platform}_record_{hash_part}"
+    return f"{platform}_notice_{hash_part}"
 
 def make_record(platform: str, platform_id: str, list_url: str, detail_url: str, house_name: str, address: str,
-                html_path: str, image_paths: list[str], 
+                html_path: str, image_paths: list[str], floorplan_paths: list[str] = None,
                 detail_text_path: str = "", kv_json_path: str = "", 
                 unit_type: str = "", building_type: str = "", theme: str = "", subway_station: str = "", eligibility: str = "", last_modified: str = "",
                 base_dir: str = "", unit_index: int = 0) -> dict:
-    # 단순화된 크롤러 ID 생성
-    crawler_id = generate_crawler_id(platform, platform_id, "notice", unit_index)
+    # 안정적인 record_id 생성 (플랫폼별 구분)
+    notice_id = generate_stable_notice_id(platform, platform_id, list_url, detail_url, house_name, unit_index)
 
     # 상대경로 변환
     if base_dir:
@@ -480,10 +479,11 @@ def make_record(platform: str, platform_id: str, list_url: str, detail_url: str,
         detail_text_path = make_relative_path(detail_text_path, base_dir)
         kv_json_path = make_relative_path(kv_json_path, base_dir)
         image_paths = [make_relative_path(p, base_dir) for p in image_paths]
+        floorplan_paths = [make_relative_path(p, base_dir) for p in floorplan_paths]
 
 
     return {
-        "record_id": crawler_id,  # 공고별 고유 ID (FK용)
+        "notice_id": notice_id,  # 공고별 고유 ID (FK용)
         "platform": platform,
         "platform_id": platform_id,
         "house_name": house_name,
@@ -498,6 +498,7 @@ def make_record(platform: str, platform_id: str, list_url: str, detail_url: str,
         "list_url": list_url,
         "detail_url": detail_url,
         "image_paths": ";".join(image_paths),
+        "floorplan_paths": ";".join(floorplan_paths),
         "html_path": html_path,
         "detail_text_path": detail_text_path,
         "kv_json_path": kv_json_path,
@@ -546,9 +547,10 @@ def generate_notice_id(platform: str, platform_id: str, house_name: str, address
     # 단순화된 크롤러 ID 사용 (notice 타입, unit_index=0)
     return generate_crawler_id(platform, platform_id, "notice", 0)
 
-def dump_improved_occupancy_csv(page, container_selector: str, out_csv_path: Path, source_record_id: str | None = None, 
+def dump_improved_occupancy_csv(page, container_selector: str, out_csv_path: Path, source_notice_id: str | None = None, 
                                 unit_type: str = "", building_type: str = "", target_occupancy: str = "", 
-                                theme: str = "", subway_station: str = "", house_name: str = "", address: str = "") -> bool:
+                                theme: str = "", subway_station: str = "", house_name: str = "", address: str = "", 
+                                platform: str = None) -> bool:
     """개선된 컬럼 구조로 CSV 생성 (입주타입 제거, 새로운 컬럼 추가)"""
     try:
         container = page.locator(container_selector)
@@ -607,11 +609,11 @@ def dump_improved_occupancy_csv(page, container_selector: str, out_csv_path: Pat
         if not rows:
             return False
 
-        # 헤더 - 단순화된 ID 구조 (record_id만 유지)
-        headers = ["record_id", "space_id", "방이름", "면적", "보증금", "월임대료", "관리비", "층", "호", "인원", "입주가능일", "입주가능"]
+        # 헤더 - 단순화된 ID 구조 (notice_id 사용)
+        headers = ["notice_id", "space_id", "방이름", "면적", "보증금", "월임대료", "관리비", "층", "호", "인원", "입주가능일", "입주가능"]
 
         # 공고별 크롤러 ID 생성 (unit_index=0으로 고정)
-        notice_crawler_id = generate_crawler_id("cohouse", source_record_id or "", "notice", 0)
+        notice_crawler_id = source_notice_id or ""
 
         out_csv_path.parent.mkdir(parents=True, exist_ok=True)
         with out_csv_path.open("w", encoding="utf-8") as f:
@@ -620,7 +622,7 @@ def dump_improved_occupancy_csv(page, container_selector: str, out_csv_path: Pat
                 # 기존 구조 기준: [방이름, 입주타입, 면적, 보증금, 월임대료, 관리비, 층, 호, 인원, 입주가능일, 입주가능]
                 if len(row) >= 11:
                     # 유닛별 크롤러 ID 생성
-                    unit_crawler_id = generate_crawler_id("cohouse", source_record_id or "", "unit", idx)
+                    unit_crawler_id = generate_crawler_id(platform, source_notice_id or "", "unit", idx)
                     
                     # space_id 생성 (물리적 공간 식별자)
                     room_name = row[0] if len(row) > 0 else ""
@@ -769,7 +771,7 @@ class BaseCrawler:
         """Process a single detail page - common logic for all crawlers"""
         try:
             from ..parsers.parsers import (
-                parse_house_name, parse_address_strict, parse_occupancy_type,
+                parse_house_name, parse_address_strict, parse_building_type,
                 parse_eligibility, _clean_title, extract_detail_text, extract_key_value_pairs,
                 parse_subway_station, extract_units_from_notice,
             )
@@ -784,7 +786,7 @@ class BaseCrawler:
             # 기본 파싱
             house_name = parse_house_name(page, title) or _clean_title(title)
             address = parse_address_strict(page)
-            building_type = parse_occupancy_type(page)
+            building_type = parse_building_type(page)
             detail_text = extract_detail_text(page)
             
             # eligibility 추출 (텍스트 파일에서 우선)
@@ -874,24 +876,27 @@ class BaseCrawler:
             # 테이블 CSV (occupancy) - 공고별 통합 생성
             occ_csv = output_dir / "tables" / f"detail_{index:04d}_occupancy.csv"
             saved_occ = False
-            # 단순화된 크롤러 ID 생성
-            stable_record_id = generate_crawler_id(
+            # 안정적인 record_id 생성 (플랫폼별 구분)
+            stable_notice_id = generate_stable_notice_id(
                 self.platform_code, 
-                str(index), 
-                "notice", 
+                str(PLATFORM_ID_MAP.get(self.platform_code, 1)),  # platform_id 사용
+                self.list_url, 
+                page.url, 
+                house_name, 
                 0
             )
             # occupancy 테이블 생성 (공고별 통합)
             for sel in ("div.tableWrap", "table", ".table", ".tbl_list"):
                 if dump_improved_occupancy_csv(page, sel, occ_csv,
-                                               source_record_id=stable_record_id,
+                                               source_notice_id=stable_notice_id,
                                                unit_type=csv_unit_type,
                                                building_type=csv_building_type,
                                                target_occupancy=ps_fields.get("target_occupancy", ""),
                                                theme=csv_theme,
                                                subway_station=csv_subway_station,
                                                house_name=house_name,
-                                               address=address):
+                                               address=address,
+                                               platform=self.platform_code):
                     saved_occ = True
                     break
 
@@ -977,17 +982,18 @@ class BaseCrawler:
             # CSV 레코드 생성 (공고별 통합)
             record = make_record(
                 platform=self.platform_code,
-                platform_id=stable_record_id,  # 공고별 고유 ID 사용
+                platform_id=str(PLATFORM_ID_MAP.get(self.platform_code, 1)),  # 플랫폼 번호 사용
                 list_url=self.list_url,
                 detail_url=page.url,
                 house_name=house_name,
                 address=address,
                 html_path=str(html_path),
                 image_paths=image_paths,
+                floorplan_paths=floor_plan_paths,
                 detail_text_path=str(detail_text_path) if detail_text else "",
                 kv_json_path=str(kv_json_path) if unit_json_fields else "",
-                unit_type=primary_unit.get("unit_type", csv_unit_type),
-                building_type=primary_unit.get("building_type", csv_building_type),
+                unit_type=csv_unit_type,
+                building_type=csv_building_type,
                 theme=csv_theme,
                 subway_station=csv_subway_station,
                 eligibility=eligibility,

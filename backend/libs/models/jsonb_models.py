@@ -27,7 +27,7 @@ class MetaInfo:
 
 
 class ExtraAttrsBuilder:
-    """Builder for curated extra_attrs JSONB data"""
+    """Builder for normalized extra_attrs JSONB data"""
     
     def __init__(self, platform: str, schema_version: str = "v1"):
         self.data = {}

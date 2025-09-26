@@ -132,6 +132,9 @@ class CoHouseCrawler(BaseCrawler):
     def _extract_platform_specific_fields(self, page, detail_desc=None, detail_text_path=None, detail_text=None) -> dict:
         """Use parser to keep legacy JSON shape; prefer list-page hints when present."""
         fields = extract_cohouse_specific_fields(page, detail_text) or {}
+        
+        # 디버깅용 로그
+        print(f"[DEBUG] _extract_platform_specific_fields - unit_type: {fields.get('unit_type')}, building_type: {fields.get('building_type')}")
 
         # Prefer hints parsed on the list page (detail_desc provided by pagination)
         if isinstance(detail_desc, dict):
@@ -148,6 +151,9 @@ class CoHouseCrawler(BaseCrawler):
         # Carry over cleaned detail text so JSON filter can mine additional info
         if detail_text:
             fields["text_content"] = detail_text
+        
+        # 최종 디버깅용 로그
+        print(f"[DEBUG] _extract_platform_specific_fields FINAL - unit_type: {fields.get('unit_type')}, building_type: {fields.get('building_type')}")
         return fields
 
     def _filter_json_fields(self, kv_pairs: dict, platform_specific_fields: dict) -> dict:
@@ -182,12 +188,15 @@ class CoHouseCrawler(BaseCrawler):
 
     def _extract_csv_housing_fields(self, platform_specific_fields: dict) -> tuple[str, str, str, str]:
         """Return CSV fields (unit_type, building_type, theme, subway_station)."""
-        return (
-            platform_specific_fields.get("unit_type", ""),
-            platform_specific_fields.get("building_type", ""),
-            platform_specific_fields.get("theme", ""),
-            platform_specific_fields.get("subway_station", ""),
-        )
+        unit_type = platform_specific_fields.get("unit_type", "")
+        building_type = platform_specific_fields.get("building_type", "")
+        theme = platform_specific_fields.get("theme", "")
+        subway_station = platform_specific_fields.get("subway_station", "")
+        
+        # 디버깅용 로그
+        print(f"[DEBUG] _extract_csv_housing_fields - unit_type: {unit_type}, building_type: {building_type}")
+        
+        return (unit_type, building_type, theme, subway_station)
 
     # ---- Main crawl -------------------------------------------------
     def crawl(self):

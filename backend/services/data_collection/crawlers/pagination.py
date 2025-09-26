@@ -53,7 +53,8 @@ def crawl_list_detail_blocks_paginated(
                 if _has_js_function(page, "cohomeList"):
                     page.evaluate(f"cohomeList({page_idx})")
                     page.wait_for_load_state("domcontentloaded", timeout=15000)
-                    page.wait_for_timeout(800)  # 살짝 숨 고르기
+                    page.wait_for_load_state("networkidle", timeout=10000)  # 네트워크 안정화 대기
+                    page.wait_for_timeout(1500)  # 추가 대기 시간
                     progress.update(f"[NAV] Page {page_idx}")
                 else:
                     # JS 함수 미로딩/미존재 → URL 페이징
@@ -67,13 +68,20 @@ def crawl_list_detail_blocks_paginated(
 
         # --- 로우 존재 확인 ---
         try:
-            page.wait_for_selector(row_selector, timeout=5000)
+            page.wait_for_selector(row_selector, timeout=10000)
+            # 테이블이 완전히 로드될 때까지 추가 대기
+            page.wait_for_timeout(500)
         except Exception:
             # 첫 페이지에서 선택자 안 보이면 다른 후보 셀렉터로 시도하도록 호출부에 맡김
             break
 
         rows = page.locator(row_selector)
         nrows = rows.count()
+        
+        # 테이블이 비어있으면 잠시 더 기다림
+        if nrows == 0:
+            page.wait_for_timeout(1000)
+            nrows = rows.count()
         added_here = 0
 
         for i in range(nrows):

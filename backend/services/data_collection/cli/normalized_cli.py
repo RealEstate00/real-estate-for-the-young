@@ -18,8 +18,8 @@ from datetime import datetime
 project_root = Path(__file__).parent.parent.parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-from backend.services.data_collection.curated.normalizer import DataNormalizer
-from backend.services.data_collection.curated.db_loader import NormalizedDataLoader
+from backend.services.data_collection.normalized.normalizer import DataNormalizer
+from backend.services.data_collection.normalized.db_loader import NormalizedDataLoader
 from backend.db.db_utils_pg import get_engine
 
 HELP = """data-collection normalized <command> [args]

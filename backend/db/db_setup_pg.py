@@ -20,7 +20,8 @@ def setup_schema():
         "backend/db/postgresql/schema_setup.sql",
         "backend/db/postgresql/housing_schema.sql", 
         "backend/db/postgresql/infra_schema.sql",
-        "backend/db/postgresql/rtms_schema.sql"
+        "backend/db/postgresql/rtms_schema.sql",
+        "backend/db/postgresql/data_collection_logs.sql"
     ]
     
 >>>>>>> 23557d1 (feat:DB적재 완료)

@@ -15,8 +15,8 @@ from typing import Optional
 project_root = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-from backend.services.data_collection.curated.db_loader import NormalizedDataLoader
-from backend.services.data_collection.curated.infra_loader import InfraDataLoader
+from backend.services.data_collection.normalized.db_loader import NormalizedDataLoader
+from backend.services.data_collection.normalized.infra_loader import InfraDataLoader
 from backend.db.db_utils_pg import test_connection
 
 # 로깅 설정

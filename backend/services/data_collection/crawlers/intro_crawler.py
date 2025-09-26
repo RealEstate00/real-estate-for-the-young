@@ -201,7 +201,8 @@ async def main():
     results = await crawler.crawl_all_intros()
     
     # 결과 저장
-    output_dir = Path("data/raw") / datetime.now().strftime("%Y-%m-%d")
+    backend_dir = Path(__file__).parent.parent.parent.parent
+    output_dir = backend_dir / "data" / "raw" / datetime.now().strftime("%Y-%m-%d")
     crawler.save_intro_data(results, output_dir)
     
     return results
