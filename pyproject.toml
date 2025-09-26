@@ -3,9 +3,9 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "Real_Estate-for-the-Young"
+name = "Real_Estate_for_the_Young"
 version = "0.1.0"
-description = "Real_Estate-for-the-Young"
+description = "Real_Estate_for_the_Young"
 readme = "README.md"
 requires-python = ">=3.12,<3.14"
 
@@ -14,5 +14,6 @@ where = ["."]
 include = ["backend*"]    # discover backend, backend.services, ...
 
 [project.scripts]
-data_collection = "backend.services.data_collection.cli.__main__:main"
-sha-db = "backend.db.db_manager:main"
+data-collection = "backend.services.data_collection.cli.__main__:main"
+data-db = "backend.db.db_manager:main"
+data-load = "backend.services.data_collection.cli.load_normalized_data:main"

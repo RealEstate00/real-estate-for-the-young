@@ -1174,4 +1174,4 @@ class DataNormalizer:
                 'description': f"건물 유형: {building_type}"
             }
         })
-    
+        

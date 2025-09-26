@@ -1,4 +1,4 @@
-# Entry point for "sha-db ..." and "python -m backend.db.db_manager"
+# Entry point for "data-db ..." and "python -m backend.db.db_manager"
 # Database management commands
 
 import sys, os
@@ -12,7 +12,7 @@ from db.db_utils_pg import get_engine, test_connection
 from db.db_setup_pg import setup_schema
 from sqlalchemy import text
 
-HELP = f"""sha-db <command> [args]
+HELP = f"""data-db <command> [args]
 
 Commands:
   create              Create database tables
@@ -28,32 +28,29 @@ Commands:
   db-create-load      Create DB and load
 
 Examples:
-  sha-db create
-  sha-db list
-  sha-db structure bus_stops
-  sha-db test
-  sha-db migrate-pg
-  sha-db load-mysql
+  data-db create
+  data-db list
+  data-db structure bus_stops
+  data-db test
+  data-db migrate-pg
+  data-db load-mysql
 """
 
 def create_tables():
     """테이블 생성"""
-    print("🏗️  데이터베이스 테이블 생성 중...")
+    print("[On Progress]  데이터베이스 테이블 생성 중...")
     try:
         setup_schema()
-        print("✅ 테이블 생성 완료!")
+        print("[COMPLETE] 테이블 생성 완료!")
         return True
     except Exception as e:
-        print(f"❌ 테이블 생성 실패: {e}")
+        print(f"[FAILED] 테이블 생성 실패: {e}")
         return False
 
 def drop_tables():
     """모든 테이블 삭제 (주의!)"""
-    print("⚠️  모든 테이블을 삭제합니다. 계속하시겠습니까? (y/N)")
-    confirm = input().lower()
-    if confirm != 'y':
-        print("❌ 취소되었습니다.")
-        return False
+    print("🗑️  모든 테이블을 삭제합니다...")
+    # 자동으로 확인 (CI/CD 환경에서 사용)
     
     engine = get_engine()
     try:
@@ -77,18 +74,18 @@ def drop_tables():
             conn.execute(text("SET session_replication_role = DEFAULT;"))
             conn.commit()
             
-        print("✅ 모든 테이블 삭제 완료!")
+        print("[COMPLETE] 모든 테이블 삭제 완료!")
         return True
     except Exception as e:
-        print(f"❌ 테이블 삭제 실패: {e}")
+        print(f"[FAILED] 테이블 삭제 실패: {e}")
         return False
 
 def reset_database():
     """데이터베이스 초기화 (삭제 후 재생성)"""
-    print("🔄 데이터베이스 초기화 중...")
+    print("[On Progress] 데이터베이스 초기화 중...")
     if drop_tables():
         if create_tables():
-            print("✅ 데이터베이스 초기화 완료!")
+            print("[COMPLETE] 데이터베이스 초기화 완료!")
             return True
     return False
 
@@ -100,19 +97,24 @@ def show_tables():
             # 테이블 목록 조회
             result = conn.execute(text("""
                 SELECT 
+                    t.table_schema,
                     t.table_name,
                     t.table_type,
                     COALESCE(s.n_tup_ins, 0) as row_count
                 FROM information_schema.tables t
                 LEFT JOIN pg_stat_user_tables s ON t.table_name = s.relname
-                WHERE t.table_schema = 'public'
-                ORDER BY t.table_name
+                WHERE t.table_schema IN ('housing', 'facilities')
+                ORDER BY t.table_schema, t.table_name
             """))
             
             print("📊 데이터베이스 테이블 현황:")
             print("=" * 60)
+            current_schema = None
             for row in result:
-                table_name, table_type, row_count = row
+                table_schema, table_name, table_type, row_count = row
+                if current_schema != table_schema:
+                    current_schema = table_schema
+                    print(f"\n📁 {table_schema} 스키마:")
                 print(f"  • {table_name}: {row_count:,} rows ({table_type})")
                 
     except Exception as e:
@@ -180,7 +182,7 @@ def main() -> None:
     elif cmd == "structure":
         if len(rest) < 1:
             print("Error: table name required for structure command")
-            print("Usage: sha-db structure <table_name>")
+            print("Usage: data-db structure <table_name>")
             sys.exit(1)
         show_table_structure(rest[0])
     elif cmd == "test":

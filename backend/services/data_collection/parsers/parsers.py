@@ -301,7 +301,7 @@ def parse_address_strict(page) -> str:
 
     return ""
 
-def parse_occupancy_type(page) -> str:
+def parse_building_type(page) -> str:
     """주거형태 정보 추출 (도시형생활주택, 아파트 등) - p.subcont_txt3에서 추출"""
     try:
         subcont_elements = page.locator("p.subcont_txt3")
@@ -1021,12 +1021,12 @@ def filter_json_fields_for_sohouse(kv_pairs: dict, platform_specific_fields: dic
     # 5) sohouse_text_extracted_info
     soi = {}
 
-    hform = pick("housing_form", "building_type", "주거형태", "주택구조")
+    hform = pick("building_type", "주거형태", "주택구조")
     if _nz(hform):
-        soi["housing_form"] = hform
-    htype = pick("housing_type", "세대형태", "세대유형", "집구조", "세대형")
+        soi["building_type"] = hform
+    htype = pick("unit_type", "세대형태", "세대유형", "집구조", "세대형")
     if _nz(htype):
-        soi["housing_type"] = htype
+        soi["unit_type"] = htype
     if _nz(elig):
         soi["target_occupancy"] = elig
 
@@ -1202,10 +1202,10 @@ def extract_sohouse_specific_fields(page, detail_text: str = "") -> dict:
             if address:
                 fields["address"] = address
 
-            building_type = parse_occupancy_type(page)
+            building_type = parse_building_type(page)
             if building_type:
                 fields["building_type"] = building_type
-                fields["housing_form"] = building_type
+                fields["building_type"] = building_type
 
             eligibility = parse_eligibility(page)
             if eligibility:
@@ -1220,18 +1220,18 @@ def extract_sohouse_specific_fields(page, detail_text: str = "") -> dict:
 
         # 텍스트 기반 보강
         if page_text:
-            housing_type_patterns = [
+            unit_type_patterns = [
                 r'주택유형\s*:\s*([^\n]+)',
                 r'집구조\s*:\s*([^\n]+)',
                 r'(\w+룸)',
                 r'(\w+형)',
             ]
-            for pattern in housing_type_patterns:
+            for pattern in unit_type_patterns:
                 match = re.search(pattern, page_text)
                 if match:
-                    housing_text = match.group(1).strip()
-                    if housing_text and housing_text not in ['', '주택유형', '집구조']:
-                        fields["housing_type"] = housing_text
+                    unit_text = match.group(1).strip()
+                    if unit_text and unit_text not in ['', '주택유형', '집구조']:
+                        fields["unit_type"] = unit_text
                         break
 
             company_patterns = {
@@ -1288,8 +1288,8 @@ def extract_sohouse_specific_fields(page, detail_text: str = "") -> dict:
 
             occupancy_patterns = {
                 "target_occupancy": r'입주대상\s*:\s*([^\n]+)',
-                "housing_form": r'주거형태\s*:\s*([^\n]+)',
-                "housing_type": r'주택유형\s*:\s*([^\n]+)',
+                "building_type": r'주거형태\s*:\s*([^\n]+)',
+                "unit_type": r'주택유형\s*:\s*([^\n]+)',
                 "move_in_date": r'입주가능일\s*:\s*([^\n]+)',
                 "availability": r'입주가능\s*:\s*([^\n]+)',
             }
@@ -1343,10 +1343,10 @@ def extract_cohouse_specific_fields(page, detail_text: str = "") -> dict:
             if address:
                 fields["address"] = address
 
-            building_type = parse_occupancy_type(page)
+            building_type = parse_building_type(page)
             if building_type:
                 fields["building_type"] = building_type
-                fields["housing_form"] = building_type
+                fields["building_type"] = building_type
 
             eligibility = parse_eligibility(page)
             if eligibility:
@@ -1361,18 +1361,18 @@ def extract_cohouse_specific_fields(page, detail_text: str = "") -> dict:
 
         # 텍스트 기반 보강
         if page_text:
-            housing_type_patterns = [
+            unit_type_patterns = [
                 r'주택유형\s*:\s*([^\n]+)',
                 r'집구조\s*:\s*([^\n]+)',
                 r'(\w+룸)',
                 r'(\w+형)',
             ]
-            for pattern in housing_type_patterns:
+            for pattern in unit_type_patterns:
                 match = re.search(pattern, page_text)
                 if match:
-                    housing_text = match.group(1).strip()
-                    if housing_text and housing_text not in ['', '주택유형', '집구조']:
-                        fields["housing_type"] = housing_text
+                    unit_text = match.group(1).strip()
+                    if unit_text and unit_text not in ['', '주택유형', '집구조']:
+                        fields["unit_type"] = unit_text
                         break
 
             company_patterns = {
@@ -1429,8 +1429,8 @@ def extract_cohouse_specific_fields(page, detail_text: str = "") -> dict:
 
             occupancy_patterns = {
                 "target_occupancy": r'입주대상\s*:\s*([^\n]+)',
-                "housing_form": r'주거형태\s*:\s*([^\n]+)',
-                "housing_type": r'주택유형\s*:\s*([^\n]+)',
+                "building_type": r'주거형태\s*:\s*([^\n]+)',
+                "unit_type": r'주택유형\s*:\s*([^\n]+)',
                 "move_in_date": r'입주가능일\s*:\s*([^\n]+)',
                 "availability": r'입주가능\s*:\s*([^\n]+)',
             }
@@ -1471,7 +1471,7 @@ def extract_cohouse_specific_fields(page, detail_text: str = "") -> dict:
         additional_info = {}
         
         # 입주타입, 면적, 입주가능일 등 추가 정보
-        occupancy_type = fields.get("housing_type", "")
+        occupancy_type = fields.get("unit_type", "")
         if occupancy_type:
             # HTML 태그 제거
             occupancy_type = re.sub(r'<[^>]+>', '', occupancy_type).strip()
@@ -1525,14 +1525,18 @@ def extract_cohouse_specific_fields(page, detail_text: str = "") -> dict:
         cohouse_text_info = {}
         
         # 기본 정보 (HTML 태그 제거)
-        if fields.get("housing_form"):
-            housing_form = re.sub(r'<[^>]+>', '', fields["housing_form"]).strip()
-            if housing_form:
-                cohouse_text_info["housing_form"] = housing_form
-        if fields.get("housing_type"):
-            housing_type = re.sub(r'<[^>]+>', '', fields["housing_type"]).strip()
-            if housing_type:
-                cohouse_text_info["housing_type"] = housing_type
+        if fields.get("building_type"):
+            building_type = re.sub(r'<[^>]+>', '', fields["building_type"]).strip()
+            if building_type:
+                cohouse_text_info["building_type"] = building_type
+                # raw.csv를 위해 최상위 레벨에도 저장
+                fields["building_type"] = building_type
+        if fields.get("unit_type"):
+            unit_type = re.sub(r'<[^>]+>', '', fields["unit_type"]).strip()
+            if unit_type:
+                cohouse_text_info["unit_type"] = unit_type
+                # raw.csv를 위해 최상위 레벨에도 저장
+                fields["unit_type"] = unit_type
         if fields.get("target_occupancy"):
             target_occupancy = re.sub(r'<[^>]+>', '', fields["target_occupancy"]).strip()
             if target_occupancy:
@@ -1864,10 +1868,10 @@ def extract_youth_specific_fields(page, detail_text: str = "", detail_desc: dict
             if address:
                 fields["address"] = address
 
-            building_type = parse_occupancy_type(page)
+            building_type = parse_building_type(page)
             if building_type:
                 fields["building_type"] = building_type
-                fields["housing_form"] = building_type
+                fields["building_type"] = building_type
 
             eligibility = parse_eligibility(page)
             if eligibility:
@@ -1887,7 +1891,7 @@ def extract_youth_specific_fields(page, detail_text: str = "", detail_desc: dict
                 "house_name": r'주택명\s*:\s*([^\n]+)',
                 "address": r'주소\s*:\s*([^\n]+)',
                 "building_type": r'주택유형\s*:\s*([^\n]+)',
-                "housing_form": r'주거형태\s*:\s*([^\n]+)',
+                "building_type": r'주거형태\s*:\s*([^\n]+)',
                 "unit_type": r'세대유형\s*:\s*([^\n]+)',
                 "target_occupancy": r'입주대상\s*:\s*([^\n]+)',
                 "theme": r'테마\s*:\s*([^\n]+)',
@@ -2061,8 +2065,8 @@ def extract_units_from_notice(page, detail_text: str = "", json_data: dict = Non
     units = []
     
     # 기본 unit 정보 추출
-    unit_type = parse_occupancy_type(page) or "기타"
-    building_type = parse_occupancy_type(page) or "다세대주택"
+    unit_type = parse_building_type(page)
+    building_type = parse_building_type(page)
     
     # 1. occupancy 테이블에서 units 추출 (가장 정확)
     if occupancy_table_path and Path(occupancy_table_path).exists():
@@ -2516,12 +2520,12 @@ def filter_json_fields_for_cohouse(kv_pairs: dict, platform_fields: dict) -> dic
 
     # 5) cohouse_text_extracted_info
     cohouse_info = {}
-    hform = pick("housing_form", "building_type", "주거형태", "주택구조")
+    hform = pick("building_type", "주거형태", "주택구조")
     if _nz(hform):
-        cohouse_info["housing_form"] = hform
-    htype = pick("housing_type", "세대형태", "세대유형", "집구조", "세대형")
+        cohouse_info["building_type"] = hform
+    htype = pick("unit_type", "세대형태", "세대유형", "집구조", "세대형")
     if _nz(htype):
-        cohouse_info["housing_type"] = htype
+        cohouse_info["unit_type"] = htype
     if _nz(elig):
         cohouse_info["target_occupancy"] = elig
     

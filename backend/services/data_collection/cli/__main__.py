@@ -1,4 +1,4 @@
-# Entry point for "data_collection ..." and "python -m backend.services.data_collection.cli"
+# Entry point for "data-collection ..." and "python -m backend.services.data_collection.cli"
 # Safe delegator: keeps existing scripts intact and forwards args.
 
 import sys, runpy
@@ -11,7 +11,7 @@ COMMANDS = {
     # add more commands here as you modularize
 }
 
-HELP = f"""data_collection <command> [args]
+HELP = f"""data-collection <command> [args]
 
 Commands:
   crawl              Run platform crawlers (see module --help)
@@ -19,16 +19,23 @@ Commands:
   normalized         Data normalization commands (see module --help)
 
 Examples:
-  data_collection crawl --help
-  data_collection crawl --target sohouse --since 2025-01-01
-  data_collection api --help
-  data_collection api load
-  data_collection api housing
-  data_collection normalized --help
-  data_collection normalized process
+  data-collection crawl --help
+  data-collection crawl --target sohouse --since 2025-01-01
+  data-collection api --help
+  data-collection api load
+  data-collection api housing
+  data-collection normalized --help
+  data-collection normalized process
 """
 
 def main() -> None:
+    # 환경 변수 설정 (기본값)
+    import os
+    os.environ.setdefault("PG_USER", "postgres")
+    os.environ.setdefault("PG_PASSWORD", "post1234")
+    os.environ.setdefault("PG_DB", "rey")
+    os.environ.setdefault("DATABASE_URL", "postgresql+psycopg://postgres:post1234@localhost:5432/rey")
+    
     # If no subcommand, print help.
     if len(sys.argv) < 2 or sys.argv[1] in {"-h", "--help"}:
         print(HELP)

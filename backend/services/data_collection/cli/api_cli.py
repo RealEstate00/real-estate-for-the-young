@@ -1,4 +1,4 @@
-# Entry point for "data_collection api ..." and "python -m backend.services.data_collection.public-api.api_cli"
+# Entry point for "data-collection api ..." and "python -m backend.services.data_collection.public-api.api_cli"
 # API data collection commands
 
 import sys, runpy
@@ -11,7 +11,7 @@ COMMANDS = {
     "fresh": "backend.services.data_collection.public-api.run",
 }
 
-HELP = f"""data_collection api <command> [args]
+HELP = f"""data-collection api <command> [args]
 
 Commands:
   load                Load all API data
@@ -22,14 +22,21 @@ Commands:
   --type options: all, public, housing, bus, convenience, hospital, school, sports, subway
 
 Examples:
-  data_collection api load
-  data_collection api public
-  data_collection api housing
-  data_collection api fresh --type all
-  data_collection api fresh --type public
+  data-collection api load
+  data-collection api public
+  data-collection api housing
+  data-collection api fresh --type all
+  data-collection api fresh --type public
 """
 
 def main() -> None:
+    # 환경 변수 설정 (기본값)
+    import os
+    os.environ.setdefault("PG_USER", "postgres")
+    os.environ.setdefault("PG_PASSWORD", "post1234")
+    os.environ.setdefault("PG_DB", "rey")
+    os.environ.setdefault("DATABASE_URL", "postgresql+psycopg://postgres:post1234@localhost:5432/rey")
+    
     # If no subcommand, print help.
     if len(sys.argv) < 2 or sys.argv[1] in {"-h", "--help"}:
         print(HELP)
