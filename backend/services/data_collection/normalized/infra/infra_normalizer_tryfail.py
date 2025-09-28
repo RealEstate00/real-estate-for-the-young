@@ -12,7 +12,7 @@ import logging
 from typing import List, Dict, Optional, Any
 from datetime import datetime
 
-from backend.services.data_collection.curated.infra.infra_normalizer_NoJusoAPI import InfraNormalizer
+from backend.services.data_collection.normalized.infra.infra_normalizer_NoJusoAPI import InfraNormalizer
 
 logger = logging.getLogger(__name__)
 
@@ -391,7 +391,7 @@ if __name__ == "__main__":
     
     # 현재 스크립트 위치에서 상대 경로로 계산
     script_dir = Path(__file__).resolve().parent
-    project_root = script_dir.parents[3]  # backend/services/data_collection/curated/infra -> backend
+    project_root = script_dir.parents[3]  # backend/services/data_collection/normalized/infra -> backend
     data_path = project_root / "data" / "public-api" / "openseoul"
     output_dir = project_root / "data" / "normalized" / "infra"  # 기존 파일 위치
     

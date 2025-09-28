@@ -1,31 +1,26 @@
-# Entry point for "data-collection ..." and "python -m backend.services.data_collection.cli"
-# Safe delegator: keeps existing scripts intact and forwards args.
+# Entry point for "data-collection-infra ..." and "python -m backend.services.data_collection.cli.infra"
+# Infrastructure and API data collection commands
 
 import sys, runpy
 from importlib import import_module
 
 COMMANDS = {
-    "crawl": "backend.services.data_collection.cli.housing.crawl_platforms_raw",
-    "api": "backend.services.data_collection.cli.api_cli",
-    "normalized": "backend.services.data_collection.cli.housing.normalized_cli",
-    # add more commands here as you modularize
+    "api": "backend.services.data_collection.cli.infra.api_cli",
+    "seoul": "backend.services.data_collection.cli.infra.seoul_api_cli",
 }
 
-HELP = f"""data-collection <command> [args]
+HELP = f"""data-collection-infra <command> [args]
 
 Commands:
-  crawl              Run platform crawlers (see module --help)
   api                API data collection commands (see module --help)
-  normalized         Data normalization commands (see module --help)
+  seoul              Seoul Open Data API commands (see module --help)
 
 Examples:
-  data-collection crawl --help
-  data-collection crawl --target sohouse --since 2025-01-01
-  data-collection api --help
-  data-collection api load
-  data-collection api housing
-  data-collection normalized --help
-  data-collection normalized process
+  data-collection-infra api --help
+  data-collection-infra api load
+  data-collection-infra seoul --help
+  data-collection-infra seoul normalize
+  data-collection-infra seoul load
 """
 
 def main() -> None:

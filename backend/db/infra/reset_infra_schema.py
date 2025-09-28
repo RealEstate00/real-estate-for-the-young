@@ -59,7 +59,7 @@ def reset_database():
                 print("✅ 스키마 생성 완료")
                 
                 # 스키마 파일 읽기 및 실행
-                schema_file = Path(__file__).resolve().parents[4] / "db" / "postgresql" / "infra_schema.sql"
+                schema_file = Path(__file__).resolve().parent / "infra_schema.sql"
                 
                 if schema_file.exists():
                     print(f"📄 스키마 파일 실행 중: {schema_file}")

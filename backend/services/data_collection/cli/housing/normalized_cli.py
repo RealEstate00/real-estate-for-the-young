@@ -84,7 +84,7 @@ def find_latest_raw_data(platform: str = None, date: str = None) -> List[Path]:
     return raw_files
 
 def get_normalized_output_path(raw_file: Path) -> Path:
-    """정규화된 데이터 출력 경로 생성: data/normalized/작업진행날짜/플랫폼명/"""
+    """정규화된 데이터 출력 경로 생성: data/normalized/housing/작업진행날짜/플랫폼명/"""
     # housing 경로에서 플랫폼명만 추출
     # 예: data/housing/sohouse/2025-09-15/raw.csv
     path_parts = raw_file.parts
@@ -102,9 +102,9 @@ def get_normalized_output_path(raw_file: Path) -> Path:
     from datetime import datetime
     today = datetime.now().strftime("%Y-%m-%d")
     
-    # backend/data/normalized/작업진행날짜/플랫폼명/ 구조로 생성
+    # backend/data/normalized/housing/작업진행날짜/플랫폼명/ 구조로 생성
     backend_dir = Path(__file__).parent.parent.parent.parent.parent
-    output_path = backend_dir / "data" / "normalized" / today / platform_name
+    output_path = backend_dir / "data" / "normalized" / "housing" / today / platform_name
     output_path.mkdir(parents=True, exist_ok=True)
     
     return output_path
@@ -202,16 +202,16 @@ def load_to_db(raw_csv_path: str, db_url: str = None) -> bool:
 def clean_normalized_data(platform: str = None, date: str = None) -> None:
     """기존 정규화된 데이터 삭제"""
     backend_dir = Path(__file__).parent.parent.parent.parent.parent
-    normalized_dir = backend_dir / "backend" / "data" / "normalized"
+    housing_dir = backend_dir / "data" / "normalized" / "housing"
     
-    if not normalized_dir.exists():
-        logging.info("[INFO] Normalized data directory not found")
+    if not housing_dir.exists():
+        logging.info("[INFO] Housing normalized data directory not found")
         return
     
-    # 날짜별로 검색 (실제 구조: normalized/날짜/플랫폼)
-    date_dirs = [d for d in normalized_dir.iterdir() if d.is_dir()]
+    # 날짜별로 검색 (실제 구조: normalized/housing/날짜/플랫폼)
+    date_dirs = [d for d in housing_dir.iterdir() if d.is_dir()]
     if not date_dirs:
-        logging.info("[INFO] No normalized data found")
+        logging.info("[INFO] No housing normalized data found")
         return
         
     # 날짜별로 정렬 (최신순)

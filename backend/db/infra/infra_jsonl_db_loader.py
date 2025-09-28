@@ -399,7 +399,7 @@ class JSONLDBLoader:
         try:
             if file_path is None:
                 # 기본 경로 설정
-                file_path = Path(__file__).resolve().parents[4] / "data" / "법정동코드 전체자료.txt"
+                file_path = Path(__file__).resolve().parents[3] / "backend" / "data" / "법정동코드 전체자료.txt"
             
             if not file_path.exists():
                 logger.error(f"법정동코드 파일이 존재하지 않습니다: {file_path}")
@@ -581,7 +581,7 @@ def main():
                 return 1
             
             print("📂 JSONL 데이터 로딩 시작...")
-            jsonl_dir = Path(__file__).resolve().parents[4] / "data" / "normalized" / "infra"
+            jsonl_dir = Path(__file__).resolve().parents[3] / "backend" / "data" / "normalized" / "infra"
             results = loader.load_all_jsonl_files(jsonl_dir)
             
             print("\n=== JSONL 로딩 결과 ===")

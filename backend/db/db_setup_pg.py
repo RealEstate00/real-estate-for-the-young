@@ -6,33 +6,28 @@ from db.db_utils_pg import get_engine
 
 def setup_schema():
     """PostgreSQL 스키마 적용"""
-    # 새로운 스키마 파일들 사용
+    # 스키마 파일들을 순서대로 정의
     schema_files = [
-        "backend/db/schema_setup.sql",
-        "backend/db/housing/housing_schema.sql"
-    ] # =======jina
-    # postgresql 디렉토리의 모든 .sql 파일 자동 감지
-    postgresql_dir = Path("backend/db/postgresql")
+        Path("backend/db/schema_setup.sql"),           # 기본 스키마 설정
+        Path("backend/db/housing/housing_schema.sql"), # 주택 스키마
+        Path("backend/db/infra/infra_schema.sql"),     # 인프라 스키마
+        Path("backend/db/infra/rtms_schema.sql")       # RTMS 스키마
+    ]
     
-    if not postgresql_dir.exists():
-        print(f"❌ PostgreSQL 스키마 디렉토리를 찾을 수 없습니다: {postgresql_dir}")
+    # 존재하지 않는 파일들 필터링
+    existing_files = [f for f in schema_files if f.exists()]
+    
+    if not existing_files:
+        print("❌ 스키마 파일이 없습니다.")
         return False
     
-    # .sql 파일들을 자동으로 찾기
-    schema_files = list(postgresql_dir.glob("*.sql"))
-    schema_files.sort()  # 알파벳 순으로 정렬 ==========inha
-    
-    if not schema_files:
-        print(f"❌ {postgresql_dir}에 .sql 파일이 없습니다.")
-        return False
-    
-    print(f"📁 발견된 스키마 파일들: {[f.name for f in schema_files]}")
+    print(f"📁 적용할 스키마 파일들: {[f.name for f in existing_files]}")
     
     eng = get_engine()
     
     try:
         with eng.begin() as conn:
-            for schema_file in schema_files:
+            for schema_file in existing_files:
                 print(f"📄 스키마 적용 중: {schema_file.name}")
                 sql = schema_file.read_text(encoding="utf-8")
                 conn.execute(text(sql))

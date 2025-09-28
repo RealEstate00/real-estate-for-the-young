@@ -51,4 +51,4 @@ CREATE SCHEMA IF NOT EXISTS rtms;
 -- ===========================================
 
 -- 기본 검색 경로 설정 (스키마 명시 없이 사용 가능)
-ALTER DATABASE rey SET search_path TO housing, infra, rtms, public;
+ALTER DATABASE rey SET search_path TO housing, infra, rtms;

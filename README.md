@@ -111,7 +111,7 @@ uv pip install -e .
 # 4. Playwright 브라우저 설치 (크롤링용)
 playwright install chromium
 
-# 5. PostgreSQL 드라이버 설치 (DB 저장 시)  
+# 5. PostgreSQL 드라이버 설치 (DB 저장 시)
 uv pip install -r backend/requirements.txt
 
 # 6. 데이터베이스 테이블 생성
@@ -256,7 +256,7 @@ data-db create
 
 ```bash
 # 정규화된 데이터를 PostgreSQL에 적재
-data-load housing --data-dir backend/data/normalized  
+data-load housing --data-dir backend/data/normalized
 
 # 특정 디렉토리 지정
 data-load housing --data-dir backend/data/normalized/2025-09-20__20250920T165754
@@ -605,7 +605,7 @@ SeoulHousingAssistBot/
 │   │       ├── parsers/        # 데이터 파싱
 │   │       │   ├── parsers.py      # HTML/JSON 파싱 (주택 공고 데이터)
 │   │       │   └── data_analyzer.py # RAW 데이터 분석 및 통계
-│   │       └── curated/        # 데이터 정제
+│   │       └── normalized/     # 데이터 정제
 │   │           └── normalizer.py # 데이터 정규화
 │   ├── db/                     # 데이터베이스
 │   │   ├── postgresql/         # PostgreSQL 스키마
