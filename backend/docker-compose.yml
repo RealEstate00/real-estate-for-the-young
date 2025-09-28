@@ -6,9 +6,9 @@ services:
     image: postgres:15-alpine
     container_name: seoul_housing_postgres
     environment:
-      POSTGRES_DB: rey
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: post1234
+      POSTGRES_DB: ${PG_DB:-rey}
+      POSTGRES_USER: ${PG_USER:-postgres}
+      POSTGRES_PASSWORD: ${PG_PASSWORD:-post1234}
       POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=ko_KR.UTF-8"
     ports:
       - "5432:5432"
@@ -44,7 +44,7 @@ services:
       dockerfile: Dockerfile
     container_name: seoul_housing_api
     environment:
-      - DATABASE_URL=postgresql://postgres:post1234@postgres:5432/rey
+      - DATABASE_URL=postgresql://${PG_USER:-postgres}:${PG_PASSWORD:-post1234}@postgres:5432/${PG_DB:-rey}
       - REDIS_URL=redis://redis:6379
       - ENVIRONMENT=production
       - SECRET_KEY=your-secret-key-here
@@ -109,7 +109,7 @@ services:
     container_name: seoul_housing_crawler
     command: celery -A app.celery worker --loglevel=info
     environment:
-      - DATABASE_URL=postgresql://postgres:post1234@postgres:5432/rey
+      - DATABASE_URL=postgresql://${PG_USER:-postgres}:${PG_PASSWORD:-post1234}@postgres:5432/${PG_DB:-rey}
       - REDIS_URL=redis://redis:6379
     volumes:
       - ./backend/data:/app/data
@@ -129,7 +129,7 @@ services:
     container_name: seoul_housing_crawler_scheduler
     command: celery -A app.celery beat --loglevel=info
     environment:
-      - DATABASE_URL=postgresql://postgres:post1234@postgres:5432/rey
+      - DATABASE_URL=postgresql://${PG_USER:-postgres}:${PG_PASSWORD:-post1234}@postgres:5432/${PG_DB:-rey}
       - REDIS_URL=redis://redis:6379
     volumes:
       - ./backend/data:/app/data

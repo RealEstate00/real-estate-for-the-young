@@ -73,7 +73,7 @@ class AddressAPI:
         self.timeout = timeout
         self.session = requests.Session()
 
-    def search(self, keyword: str, count_per_page: int = 1, current_page: int = 1, reverse: bool = False) -> dict:
+    def search(self, keyword: str, count_per_page: int = 1, current_page: int = 1, reverse: bool = True) -> dict:
         """Call the search endpoint and return parsed JSON (or raise)."""
         params = {
             "confmKey": self.api_key,
@@ -85,6 +85,7 @@ class AddressAPI:
             "hstryYn": "Y",   # include changed history
             "relJibun": "Y",  # include related jibun
             "hemdNm": "Y",    # include emd (legal dong) name
+            "admCd": "Y",     # include administrative code (행정구역코드)
         }
         
         # reverse=True일 때는 도로명주소 → 지번주소 변환을 위한 추가 파라미터
@@ -121,7 +122,7 @@ class AddressAPI:
             logger.info(f"   - 시도: {first_result.get('siNm', 'N/A')}")
             logger.info(f"   - 시군구: {first_result.get('sggNm', 'N/A')}")
             logger.info(f"   - 읍면동: {first_result.get('emdNm', 'N/A')}")
-            logger.info(f"   - 법정동코드: {first_result.get('bcode', 'N/A')}")
+            logger.info(f"   - 법정동코드: {first_result.get('admCd', 'N/A')}")
             logger.info(f"   - 좌표: ({first_result.get('entY', 'N/A')}, {first_result.get('entX', 'N/A')})")
         
         return data
@@ -158,7 +159,7 @@ class AddressAPI:
                     "sido": j.get("siNm"),
                     "sigungu": j.get("sggNm"),
                     "eupmyeon_dong": j.get("emdNm"),
-                    "bcode": j.get("bcode"),
+                    "bcode": j.get("admCd"),  # 법정동코드는 admCd 필드로 반환됨
                     "road_full": road_addr,
                     "jibun_full": j.get("jibunAddr"),
                     "x": _to_float(j.get("entX")),  # longitude
