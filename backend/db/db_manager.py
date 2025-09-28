@@ -16,30 +16,35 @@ HELP = f"""data-db <command> [args]
 
 Commands:
   create              Create database tables
-  drop                Drop all tables (WARNING!)
+  drop [schema]       Drop tables (WARNING!)
+                      - drop: Drop all tables
+                      - drop housing: Drop housing schema tables
+                      - drop infra: Drop infra schema tables
+                      - drop rtms: Drop rtms schema tables
+                      - drop public: Drop public schema tables
   reset               Reset database (drop + create)
   list                List all tables
   structure <table>   Show table structure
   test                Test database connection
-  migrate-pg          Migrate data to PostgreSQL
-  migrate-db          Generic migration script
-  load-csv-mysql      Load CSV into MySQL
-  load-mysql          Load into MySQL
   db-create-load      Create DB and load
 
 Examples:
   data-db create
+  data-db drop housing
+  data-db drop infra
+  data-db drop all
   data-db list
   data-db structure bus_stops
   data-db test
-  data-db migrate-pg
-  data-db load-mysql
 """
 
 def create_tables():
     """테이블 생성"""
     print("[On Progress]  데이터베이스 테이블 생성 중...")
     try:
+        # 1. 스키마 생성
+        create_schemas()
+        # 2. 테이블 생성
         setup_schema()
         print("[COMPLETE] 테이블 생성 완료!")
         return True
@@ -47,10 +52,38 @@ def create_tables():
         print(f"[FAILED] 테이블 생성 실패: {e}")
         return False
 
-def drop_tables():
-    """모든 테이블 삭제 (주의!)"""
-    print("🗑️  모든 테이블을 삭제합니다...")
-    # 자동으로 확인 (CI/CD 환경에서 사용)
+def create_schemas():
+    """필요한 스키마들 생성"""
+    print("📁 스키마 생성 중...")
+    engine = get_engine()
+    
+    try:
+        with engine.connect() as conn:
+            # 스키마 생성
+            schemas = ['infra', 'housing', 'rtms']
+            for schema in schemas:
+                conn.execute(text(f"CREATE SCHEMA IF NOT EXISTS {schema}"))
+                print(f"✅ {schema} 스키마 생성 완료")
+            
+            conn.commit()
+        print("📁 모든 스키마 생성 완료!")
+        return True
+    except Exception as e:
+        print(f"❌ 스키마 생성 실패: {e}")
+        return False
+
+def drop_tables(schema_name=None):
+    """테이블 삭제 (주의!)
+    
+    Args:
+        schema_name: 삭제할 스키마명 (None이면 모든 스키마)
+    """
+    if schema_name:
+        print(f"🗑️  {schema_name} 스키마의 모든 테이블을 삭제합니다...")
+        schemas_to_drop = [schema_name]
+    else:
+        print("🗑️  모든 스키마의 테이블을 삭제합니다...")
+        schemas_to_drop = ['housing', 'infra', 'rtms', 'public']
     
     engine = get_engine()
     try:
@@ -58,23 +91,30 @@ def drop_tables():
             # 외래키 제약조건 비활성화
             conn.execute(text("SET session_replication_role = replica;"))
             
-            # 모든 테이블 삭제
-            result = conn.execute(text("""
-                SELECT tablename FROM pg_tables 
-                WHERE schemaname = 'public' 
-                AND tablename NOT LIKE 'pg_%'
-            """))
-            
-            tables = [row[0] for row in result]
-            for table in tables:
-                conn.execute(text(f"DROP TABLE IF EXISTS {table} CASCADE"))
-                print(f"🗑️  {table} 테이블 삭제")
+            total_dropped = 0
+            for schema in schemas_to_drop:
+                # 해당 스키마의 모든 테이블 조회
+                result = conn.execute(text("""
+                    SELECT tablename FROM pg_tables 
+                    WHERE schemaname = :schema_name 
+                    AND tablename NOT LIKE 'pg_%'
+                """), {"schema_name": schema})
+                
+                tables = [row[0] for row in result]
+                if tables:
+                    print(f"📁 {schema} 스키마에서 {len(tables)}개 테이블 발견")
+                    for table in tables:
+                        conn.execute(text(f"DROP TABLE IF EXISTS {schema}.{table} CASCADE"))
+                        print(f"🗑️  {schema}.{table} 테이블 삭제")
+                        total_dropped += 1
+                else:
+                    print(f"📁 {schema} 스키마에 삭제할 테이블이 없습니다")
             
             # 외래키 제약조건 재활성화
             conn.execute(text("SET session_replication_role = DEFAULT;"))
             conn.commit()
             
-        print("[COMPLETE] 모든 테이블 삭제 완료!")
+        print(f"[COMPLETE] 총 {total_dropped}개 테이블 삭제 완료!")
         return True
     except Exception as e:
         print(f"[FAILED] 테이블 삭제 실패: {e}")
@@ -102,8 +142,8 @@ def show_tables():
                     t.table_type,
                     COALESCE(s.n_tup_ins, 0) as row_count
                 FROM information_schema.tables t
-                LEFT JOIN pg_stat_user_tables s ON t.table_name = s.relname
-                WHERE t.table_schema IN ('housing', 'facilities')
+                LEFT JOIN pg_stat_user_tables s ON t.table_name = s.relname AND t.table_schema = s.schemaname
+                WHERE t.table_schema IN ('housing', 'infra', 'rtms', 'public')
                 ORDER BY t.table_schema, t.table_name
             """))
             
@@ -174,7 +214,10 @@ def main() -> None:
     if cmd == "create":
         create_tables()
     elif cmd == "drop":
-        drop_tables()
+        schema_name = rest[0] if rest else None
+        if schema_name == "all":
+            schema_name = None
+        drop_tables(schema_name)
     elif cmd == "reset":
         reset_database()
     elif cmd == "list":
@@ -187,31 +230,11 @@ def main() -> None:
         show_table_structure(rest[0])
     elif cmd == "test":
         test_db()
-    elif cmd == "migrate-pg":
-        # Import and run migration
-        import runpy
-        sys.argv = ["backend.services.data_collection.cli.migrate_to_postgresql"] + rest
-        runpy.run_module("backend.services.data_collection.cli.migrate_to_postgresql", run_name="__main__")
-    elif cmd == "migrate-db":
-        # Import and run migration
-        import runpy
-        sys.argv = ["backend.services.data_collection.cli.migrate_database"] + rest
-        runpy.run_module("backend.services.data_collection.cli.migrate_database", run_name="__main__")
-    elif cmd == "load-csv-mysql":
-        # Import and run CSV loading
-        import runpy
-        sys.argv = ["backend.services.data_collection.cli.load_csv_to_mysql"] + rest
-        runpy.run_module("backend.services.data_collection.cli.load_csv_to_mysql", run_name="__main__")
-    elif cmd == "load-mysql":
-        # Import and run MySQL loading
-        import runpy
-        sys.argv = ["backend.services.data_collection.cli.load_to_mysql"] + rest
-        runpy.run_module("backend.services.data_collection.cli.load_to_mysql", run_name="__main__")
     elif cmd == "db-create-load":
         # Import and run DB create and load
         import runpy
-        sys.argv = ["backend.services.data_collection.cli.db_create_and_load"] + rest
-        runpy.run_module("backend.services.data_collection.cli.db_create_and_load", run_name="__main__")
+        sys.argv = ["backend.services.ingestion.cli.db_create_and_load"] + rest
+        runpy.run_module("backend.services.ingestion.cli.db_create_and_load", run_name="__main__")
     else:
         print(f"Unknown command: {cmd}\n")
         print(HELP)

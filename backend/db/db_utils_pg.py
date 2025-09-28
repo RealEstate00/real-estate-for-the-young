@@ -20,7 +20,7 @@ def get_engine():
     password = os.getenv("PG_PASSWORD", "post1234")
     db = os.getenv("PG_DB", "rey")
     # Optional schema search_path: add options if needed
-    url = f"postgresql+psycopg://{user}:{password}@{host}:{port}/{db}"
+    url = f"postgresql+psycopg2://{user}:{password}@{host}:{port}/{db}"
     eng = create_engine(url, pool_pre_ping=True, pool_recycle=3600, future=True)
     return eng
 
@@ -284,28 +284,24 @@ def upsert_school(school_data):
         return result[0] if result else None
 
 def log_data_collection(data_source, file_name, record_count, status, error_message=None):
-    """데이터 수집 로그 기록 (테이블이 존재하지 않을 수 있음)"""
-    try:
-        LOG_SQL = """
-        INSERT INTO public_data_collection_logs (
-            data_source, file_name, record_count, status, error_message
-        ) VALUES (
-            :data_source, :file_name, :record_count, :status, :error_message
-        );
-        """
+    """데이터 수집 로그 기록"""
+    LOG_SQL = """
+    INSERT INTO public_data_collection_logs (
+        data_source, file_name, record_count, status, error_message
+    ) VALUES (
+        :data_source, :file_name, :record_count, :status, :error_message
+    );
+    """
 
-        engine = get_engine()
-        with engine.begin() as conn:
-            conn.execute(text(LOG_SQL), {
-                'data_source': data_source,
-                'file_name': file_name,
-                'record_count': record_count,
-                'status': status,
-                'error_message': error_message
-            })
-    except Exception as e:
-        # 테이블이 존재하지 않으면 조용히 무시
-        print(f"Warning: Could not log data collection - {e}")
+    engine = get_engine()
+    with engine.begin() as conn:
+        conn.execute(text(LOG_SQL), {
+            'data_source': data_source,
+            'file_name': file_name,
+            'record_count': record_count,
+            'status': status,
+            'error_message': error_message
+        })
 
 def get_platform_id(platform_code):
     """플랫폼 코드로 플랫폼 ID 조회"""

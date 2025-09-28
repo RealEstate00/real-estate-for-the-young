@@ -59,11 +59,7 @@ CONFIGS_DIR: Path = BACKEND_DIR / "configs"
 LOGS_DIR: Path = BACKEND_DIR / "logs"
 
 # Standard data lifecycle folders
-RAW_DIR: Path = DATA_DIR / "raw"
-INTERIM_DIR: Path = DATA_DIR / "interim"
-PROCESSED_DIR: Path = DATA_DIR / "processed"
-EXTERNAL_DIR: Path = DATA_DIR / "external"
-
+HOUSING_DIR: Path = DATA_DIR / "housing"
 
 def ensure_dir(path: Path) -> Path:
     """Create the directory if missing and return it."""
@@ -84,10 +80,10 @@ def sanitize_component(name: str) -> str:
 def make_run_dir(source: str, run_id: str | None = None, date_ymd: str | None = None,
                  tz: timezone | None = KST) -> Path:
     """
-    Create and return a canonical run directory under RAW_DIR.
+    Create and return a canonical run directory under HOUSING_DIR.
 
     Folder layout:
-        data/raw/<source>/<YYYY-MM-DD>__<run_id>/
+        data/housing/<source>/<YYYY-MM-DD>/
 
     Parameters
     ----------
@@ -105,8 +101,8 @@ def make_run_dir(source: str, run_id: str | None = None, date_ymd: str | None = 
     """
     src = sanitize_component(source)
     date_str = date_ymd or today_ymd(tz)
-    run = run_id or datetime.now(tz or KST).strftime("%Y%m%dT%H%M%S")
-    run_dir = RAW_DIR / src / f"{date_str}__{run}"
+    # 날짜까지만 사용 (타임스탬프 제거)
+    run_dir = HOUSING_DIR / src / date_str
     return ensure_dir(run_dir)
 
 __all__ = [
@@ -116,7 +112,7 @@ __all__ = [
     "DATA_DIR",
     "CONFIGS_DIR",
     "LOGS_DIR",
-    "RAW_DIR",
+    "HOUSING_DIR",
     "INTERIM_DIR",
     "PROCESSED_DIR",
     "EXTERNAL_DIR",
