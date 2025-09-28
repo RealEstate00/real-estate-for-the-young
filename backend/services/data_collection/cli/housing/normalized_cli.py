@@ -18,38 +18,45 @@ from datetime import datetime
 project_root = Path(__file__).parent.parent.parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-from backend.services.data_collection.normalized.normalizer import DataNormalizer
-from backend.services.data_collection.normalized.db_loader import NormalizedDataLoader
+from backend.services.data_collection.normalized.housing.normalizer import DataNormalizer
+from backend.services.data_collection.normalized.housing.db_loader import NormalizedDataLoader
 from backend.db.db_utils_pg import get_engine
 
-HELP = """data-collection normalized <command> [args]
+HELP = """data-ingest normalized <command> [args]
 
 Commands:
   process              최근 날짜의 모든 raw 데이터를 정규화
   process --platform <name>  특정 플랫폼만 정규화
   process --date <date>      특정 날짜만 정규화
   process --db              정규화 후 DB에 저장
+  process --fresh           기존 정규화 데이터를 삭제하고 새로 생성
 
 Examples:
-  data-collection normalized process
-  data-collection normalized process --platform sohouse
-  data-collection normalized process --date 2025-09-15
-  data-collection normalized process --db
+  data-ingest normalized process
+  data-ingest normalized process --platform sohouse
+  data-ingest normalized process --date 2025-09-15
+  data-ingest normalized process --db
+  data-ingest normalized process --fresh
+  data-ingest normalized process --platform cohouse --fresh
 """
 
 def find_latest_raw_data(platform: str = None, date: str = None) -> List[Path]:
-    """최근 날짜의 raw 데이터 파일들을 찾기"""
-    raw_dir = Path("backend/data/raw")
-    if not raw_dir.exists():
+    """최근 날짜의 housing 데이터 파일들을 찾기"""
+    backend_dir = Path(__file__).parent.parent.parent.parent.parent
+    housing_dir = backend_dir / "data" / "housing"
+    
+    if not housing_dir.exists():
+        logging.warning(f"[ERROR] Housing directory not found: {housing_dir}")
         return []
     
     raw_files = []
     
     # 플랫폼별로 검색
     platforms = [platform] if platform else ['sohouse', 'cohouse', 'youth', 'sh', 'lh']
+    logging.debug(f"[DEBUG] Searching platforms: {platforms}")
     
     for platform_name in platforms:
-        platform_dir = raw_dir / platform_name
+        platform_dir = housing_dir / platform_name
         if not platform_dir.exists():
             continue
             
@@ -77,26 +84,27 @@ def find_latest_raw_data(platform: str = None, date: str = None) -> List[Path]:
     return raw_files
 
 def get_normalized_output_path(raw_file: Path) -> Path:
-    """정규화된 데이터 출력 경로 생성: data/normalized/날짜/플랫폼명/"""
-    # raw 경로에서 날짜와 플랫폼명 추출
-    # 예: data/raw/sohouse/2025-09-15__20250915T021038/raw.csv
+    """정규화된 데이터 출력 경로 생성: data/normalized/작업진행날짜/플랫폼명/"""
+    # housing 경로에서 플랫폼명만 추출
+    # 예: data/housing/sohouse/2025-09-15/raw.csv
     path_parts = raw_file.parts
     platform_name = None
-    date_str = None
     
-    for i, part in enumerate(path_parts):
+    for part in path_parts:
         if part in ['sohouse', 'cohouse', 'youth', 'sh', 'lh']:
             platform_name = part
-            # 다음 디렉토리가 날짜일 가능성이 높음
-            if i + 1 < len(path_parts):
-                date_str = path_parts[i + 1]
             break
     
-    if not platform_name or not date_str:
-        raise ValueError(f"플랫폼명 또는 날짜를 추출할 수 없습니다: {raw_file}")
+    if not platform_name:
+        raise ValueError(f"플랫폼명을 추출할 수 없습니다: {raw_file}")
     
-    # backend/data/normalized/날짜/플랫폼명/ 구조로 생성
-    output_path = Path("backend") / "data" / "normalized" / date_str / platform_name
+    # 오늘 날짜 사용 (정규화 실행 날짜)
+    from datetime import datetime
+    today = datetime.now().strftime("%Y-%m-%d")
+    
+    # backend/data/normalized/작업진행날짜/플랫폼명/ 구조로 생성
+    backend_dir = Path(__file__).parent.parent.parent.parent.parent
+    output_path = backend_dir / "data" / "normalized" / today / platform_name
     output_path.mkdir(parents=True, exist_ok=True)
     
     return output_path
@@ -116,14 +124,40 @@ def normalize_data(raw_csv_path: str) -> bool:
         print(f"🔄 정규화 시작: {raw_csv_path}")
         
         normalizer = DataNormalizer()
-        normalized_data = normalizer.normalize_raw_data(raw_path)
         
-        # 정규화된 데이터를 JSON으로 저장
-        for table_name, data in normalized_data.items():
+        # 실시간 저장을 위한 콜백 함수
+        def save_progress(table_name: str, data: list):
             output_file = output_path / f"{table_name}.json"
+            
+            # NaN 값을 null로 변환하는 함수
+            def convert_nan_to_null(obj):
+                if isinstance(obj, dict):
+                    return {k: convert_nan_to_null(v) for k, v in obj.items()}
+                elif isinstance(obj, list):
+                    return [convert_nan_to_null(item) for item in obj]
+                elif pd.isna(obj):
+                    return None
+                elif hasattr(obj, 'isoformat'):  # datetime, Timestamp 등
+                    return obj.isoformat()
+                else:
+                    return obj
+            
+            # 데이터 변환
+            converted_data = convert_nan_to_null(data)
+            
             with open(output_file, 'w', encoding='utf-8') as f:
-                json.dump(data, f, ensure_ascii=False, indent=2, default=str)
+                json.dump(converted_data, f, ensure_ascii=False, indent=2)
             print(f"✅ {table_name}: {len(data)}개 레코드 저장 → {output_file}")
+        
+        # 정규화 실행 (실시간 저장)
+        normalized_data = normalizer.normalize_raw_data(raw_path, save_callback=save_progress)
+        
+        # codes.json 복사 (공통 파일)
+        codes_file = Path("backend/data/normalized/2025-09-28/codes.json")
+        if codes_file.exists():
+            import shutil
+            shutil.copy(codes_file, output_path / "codes.json")
+            print(f"✅ codes.json 복사 완료")
         
         print(f"✅ 정규화 완료: {output_path}")
         return True
@@ -151,22 +185,70 @@ def load_to_db(raw_csv_path: str, db_url: str = None) -> bool:
             db_url = get_engine().url
         
         # DB에 저장
-        with NormalizedDataLoader(db_url) as loader:
-            success = loader.load_normalized_data(normalized_data)
-            
-            if success:
-                print("✅ DB 저장 완료")
-                return True
-            else:
-                print("❌ DB 저장 실패")
-                return False
+        loader = NormalizedDataLoader(db_url)
+        success = loader.load_normalized_data(normalized_data)
+        
+        if success:
+            print("✅ DB 저장 완료")
+            return True
+        else:
+            print("❌ DB 저장 실패")
+            return False
                 
     except Exception as e:
         print(f"❌ 처리 실패: {e}")
         return False
 
-def process_latest_data(platform: str = None, date: str = None, save_to_db: bool = False) -> bool:
+def clean_normalized_data(platform: str = None, date: str = None) -> None:
+    """기존 정규화된 데이터 삭제"""
+    backend_dir = Path(__file__).parent.parent.parent.parent.parent
+    normalized_dir = backend_dir / "backend" / "data" / "normalized"
+    
+    if not normalized_dir.exists():
+        logging.info("[INFO] Normalized data directory not found")
+        return
+    
+    # 날짜별로 검색 (실제 구조: normalized/날짜/플랫폼)
+    date_dirs = [d for d in normalized_dir.iterdir() if d.is_dir()]
+    if not date_dirs:
+        logging.info("[INFO] No normalized data found")
+        return
+        
+    # 날짜별로 정렬 (최신순)
+    date_dirs.sort(key=lambda x: x.name, reverse=True)
+    
+    # 특정 날짜가 지정된 경우
+    if date:
+        target_date_dirs = [d for d in date_dirs if d.name.startswith(date)]
+    else:
+        # 최신 날짜만
+        target_date_dirs = [date_dirs[0]]
+    
+    # 플랫폼별로 검색
+    platforms = [platform] if platform else ['sohouse', 'cohouse', 'youth', 'sh', 'lh']
+    
+    for date_dir in target_date_dirs:
+        print(f"🗑️  날짜 디렉토리 검사: {date_dir}")
+        
+        for platform_name in platforms:
+            platform_dir = date_dir / platform_name
+            if platform_dir.exists():
+                print(f"🗑️  기존 정규화 데이터 삭제: {platform_dir}")
+                import shutil
+                shutil.rmtree(platform_dir, ignore_errors=True)
+        
+        # 날짜 디렉토리가 비어있으면 삭제
+        if not any(date_dir.iterdir()):
+            print(f"🗑️  빈 날짜 디렉토리 삭제: {date_dir}")
+            import shutil
+            shutil.rmtree(date_dir, ignore_errors=True)
+
+def process_latest_data(platform: str = None, date: str = None, save_to_db: bool = False, fresh: bool = False) -> bool:
     """최근 날짜의 모든 raw 데이터를 정규화"""
+    if fresh:
+        print(f"🧹 Fresh 모드: 기존 정규화 데이터 삭제 중...")
+        clean_normalized_data(platform, date)
+    
     print(f"🔍 최근 raw 데이터 검색 중...")
     
     raw_files = find_latest_raw_data(platform, date)
@@ -216,6 +298,7 @@ def main():
     parser.add_argument("--date", help="특정 날짜만 처리 (YYYY-MM-DD)")
     parser.add_argument("--db", action="store_true", help="정규화 후 DB에 저장")
     parser.add_argument("--db-url", help="데이터베이스 URL")
+    parser.add_argument("--fresh", action="store_true", help="기존 정규화 데이터를 삭제하고 새로 생성")
     parser.add_argument("--verbose", "-v", action="store_true", help="상세 로그 출력")
     
     args = parser.parse_args()
@@ -226,7 +309,7 @@ def main():
     
     # 명령어 실행
     if args.command == "process":
-        success = process_latest_data(args.platform, args.date, args.db)
+        success = process_latest_data(args.platform, args.date, args.db, args.fresh)
     
     sys.exit(0 if success else 1)
 

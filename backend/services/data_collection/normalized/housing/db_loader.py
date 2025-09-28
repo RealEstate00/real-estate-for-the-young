@@ -93,10 +93,13 @@ class NormalizedDataLoader:
             trans = self.connection.begin()
             
             try:
-                # 1. 플랫폼 데이터 저장
+                # 1. 코드 마스터 데이터 저장 (먼저 로드)
+                self._load_code_master(normalized_data.get('codes', []))
+                
+                # 2. 플랫폼 데이터 저장
                 self._load_platforms(normalized_data.get('platforms', []))
                 
-                # 2. 주소 데이터 저장
+                # 3. 주소 데이터 저장
                 self._load_addresses(normalized_data.get('addresses', []))
                 
                 # 3. 공고 데이터 저장
@@ -125,6 +128,32 @@ class NormalizedDataLoader:
             logger.error(f"DB 연결 실패: {e}")
             return False
     
+    def _load_code_master(self, codes: List[Dict]):
+        """코드 마스터 데이터 저장"""
+        if not codes:
+            return
+            
+        logger.info(f"코드 마스터 데이터 저장: {len(codes)}개")
+        
+        for code in codes:
+            code_data = {
+                'cd': code.get('cd'),
+                'name': code.get('name'),
+                'description': code.get('description'),
+                'upper_cd': code.get('upper_cd')
+            }
+            
+            # UPSERT 쿼리
+            query = """
+            INSERT INTO housing.code_master (cd, name, description, upper_cd)
+            VALUES (:cd, :name, :description, :upper_cd)
+            ON CONFLICT (cd) DO UPDATE SET
+                name = EXCLUDED.name,
+                description = EXCLUDED.description,
+                upper_cd = EXCLUDED.upper_cd
+            """
+            self.connection.execute(text(query), code_data)
+    
     def _load_platforms(self, platforms: List[Dict]):
         """플랫폼 데이터 저장"""
         if not platforms:
@@ -136,19 +165,22 @@ class NormalizedDataLoader:
             # id 필드 제외하고 저장 (SERIAL로 자동 생성)
             platform_data = {k: v for k, v in platform.items() if k != 'id'}
             
+            # base_url을 url로 매핑
+            if 'base_url' in platform_data:
+                platform_data['url'] = platform_data.pop('base_url')
+            
             # 누락된 필드 기본값 설정
-            if 'platform_extra' not in platform_data:
-                platform_data['platform_extra'] = None
+            if 'is_active' not in platform_data:
+                platform_data['is_active'] = True
             
             # UPSERT 쿼리 (housing 스키마 사용)
             query = """
-            INSERT INTO housing.platforms (code, name, base_url, is_active, platform_extra, created_at, updated_at)
-            VALUES (:code, :name, :base_url, :is_active, :platform_extra, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            INSERT INTO housing.platforms (code, name, url, is_active, created_at, updated_at)
+            VALUES (:code, :name, :url, :is_active, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
             ON CONFLICT (code) DO UPDATE SET
                 name = EXCLUDED.name,
-                base_url = EXCLUDED.base_url,
+                url = EXCLUDED.url,
                 is_active = EXCLUDED.is_active,
-                platform_extra = EXCLUDED.platform_extra,
                 updated_at = CURRENT_TIMESTAMP
             RETURNING id
             """
@@ -156,8 +188,8 @@ class NormalizedDataLoader:
             platform['db_id'] = result[0] if result else None
             
             # 매핑 테이블 업데이트
-            if 'source' in platform:
-                self.platform_id_map[platform['source']] = platform['db_id']
+            if 'code' in platform:
+                self.platform_id_map[platform['code']] = platform['db_id']
     
     def _load_addresses(self, addresses: List[Dict]):
         """주소 데이터 저장"""
@@ -170,10 +202,17 @@ class NormalizedDataLoader:
             # id 필드 제외하고 저장
             address_data = {k: v for k, v in address.items() if k != 'id'}
             
-            # INSERT 쿼리 (housing 스키마 사용)
+            # 필드명 매핑
+            if 'lat' in address_data:
+                address_data['latitude'] = address_data.pop('lat')
+            if 'lon' in address_data:
+                address_data['longitude'] = address_data.pop('lon')
+            
+            # INSERT 쿼리 (housing 스키마 사용) - 중복은 무시
             query = """
-            INSERT INTO housing.addresses (address_raw, ctpv_nm, sgg_nm, emd_cd, emd_nm, road_name_full, jibun_name_full, main_jibun, sub_jibun, building_name, building_main_no, building_sub_no, lat, lon, created_at)
-            VALUES (:address_raw, :ctpv_nm, :sgg_nm, :emd_cd, :emd_nm, :road_name_full, :jibun_name_full, :main_jibun, :sub_jibun, :building_name, :building_main_no, :building_sub_no, :lat, :lon, CURRENT_TIMESTAMP)
+            INSERT INTO housing.addresses (address_raw, ctpv_nm, sgg_nm, emd_cd, emd_nm, road_name_full, jibun_name_full, building_name, building_main_no, building_sub_no, latitude, longitude, created_at)
+            VALUES (:address_raw, :ctpv_nm, :sgg_nm, :emd_cd, :emd_nm, :road_name_full, :jibun_name_full, :building_name, :building_main_no, :building_sub_no, :latitude, :longitude, CURRENT_TIMESTAMP)
+            ON CONFLICT DO NOTHING
             RETURNING id
             """
             result = self.connection.execute(text(query), address_data).fetchone()
@@ -204,7 +243,6 @@ class NormalizedDataLoader:
             # 공고 데이터 준비
             notice_data = {
                 'platform_id': platform_id,
-                'source': notice.get('source'),
                 'source_key': notice.get('source_key'),
                 'title': notice.get('title'),
                 'detail_url': notice.get('detail_url'),
@@ -216,6 +254,7 @@ class NormalizedDataLoader:
                 'apply_end_at': notice.get('apply_end_at'),
                 'address_raw': notice.get('address_raw'),
                 'address_id': address_id,
+                'building_type': notice.get('building_type'),  # Added missing column
                 'deposit_min': notice.get('deposit_min'),
                 'deposit_max': notice.get('deposit_max'),
                 'rent_min': notice.get('rent_min'),
@@ -224,7 +263,6 @@ class NormalizedDataLoader:
                 'area_max_m2': notice.get('area_max_m2'),
                 'floor_min': notice.get('floor_min'),
                 'floor_max': notice.get('floor_max'),
-                'description_raw': notice.get('description_raw'),
                 'notice_extra': json.dumps(notice.get('notice_extra', {})),
                 'has_images': notice.get('has_images', False),
                 'has_floorplan': notice.get('has_floorplan', False),
@@ -234,19 +272,18 @@ class NormalizedDataLoader:
             # UPSERT 쿼리 (housing 스키마 사용)
             query = """
             INSERT INTO housing.notices (
-                platform_id, source, source_key, title, detail_url, list_url, status,
+                platform_id, source_key, title, detail_url, list_url, status,
                 posted_at, last_modified, apply_start_at, apply_end_at, address_raw, address_id,
-                deposit_min, deposit_max, rent_min, rent_max, area_min_m2, area_max_m2,
-                floor_min, floor_max, description_raw, notice_extra, has_images, has_floorplan,
+                building_type, deposit_min, deposit_max, rent_min, rent_max, area_min_m2, area_max_m2,
+                floor_min, floor_max, notice_extra, has_images, has_floorplan,
                 has_documents, created_at, updated_at
             ) VALUES (
-                :platform_id, :source, :source_key, :title, :detail_url, :list_url, :status,
+                :platform_id, :source_key, :title, :detail_url, :list_url, :status,
                 :posted_at, :last_modified, :apply_start_at, :apply_end_at, :address_raw, :address_id,
-                :deposit_min, :deposit_max, :rent_min, :rent_max, :area_min_m2, :area_max_m2,
-                :floor_min, :floor_max, :description_raw, :notice_extra, :has_images, :has_floorplan,
+                :building_type, :deposit_min, :deposit_max, :rent_min, :rent_max, :area_min_m2, :area_max_m2,
+                :floor_min, :floor_max, :notice_extra, :has_images, :has_floorplan,
                 :has_documents, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
-            ) ON CONFLICT (source, source_key) DO UPDATE SET
-                platform_id = EXCLUDED.platform_id,
+            ) ON CONFLICT (platform_id, source_key) DO UPDATE SET
                 title = EXCLUDED.title,
                 detail_url = EXCLUDED.detail_url,
                 status = EXCLUDED.status,
@@ -254,6 +291,7 @@ class NormalizedDataLoader:
                 last_modified = EXCLUDED.last_modified,
                 address_raw = EXCLUDED.address_raw,
                 address_id = EXCLUDED.address_id,
+                building_type = EXCLUDED.building_type,
                 deposit_min = EXCLUDED.deposit_min,
                 deposit_max = EXCLUDED.deposit_max,
                 rent_min = EXCLUDED.rent_min,
@@ -262,7 +300,6 @@ class NormalizedDataLoader:
                 area_max_m2 = EXCLUDED.area_max_m2,
                 floor_min = EXCLUDED.floor_min,
                 floor_max = EXCLUDED.floor_max,
-                description_raw = EXCLUDED.description_raw,
                 notice_extra = EXCLUDED.notice_extra,
                 has_images = EXCLUDED.has_images,
                 has_floorplan = EXCLUDED.has_floorplan,
@@ -295,44 +332,40 @@ class NormalizedDataLoader:
                 'notice_id': notice_id,
                 'unit_code': unit.get('unit_code'),
                 'unit_type': unit.get('unit_type'),
-                'tenure': unit.get('tenure'),
                 'deposit': unit.get('deposit'),
                 'rent': unit.get('rent'),
                 'maintenance_fee': unit.get('maintenance_fee'),
                 'area_m2': unit.get('area_m2'),
-                'room_count': unit.get('room_count'),
-                'bathroom_count': unit.get('bathroom_count'),
                 'floor': unit.get('floor'),
-                'direction': unit.get('direction'),
+                'room_number': unit.get('room_number'),
+                'occupancy_available': unit.get('occupancy_available'),
                 'occupancy_available_at': unit.get('occupancy_available_at'),
-                'unit_extra': json.dumps(unit.get('unit_extra', {}))
+                'capacity': unit.get('capacity')
             }
             
             # UPSERT 쿼리 (housing 스키마 사용)
             query = """
             INSERT INTO housing.units (
-                notice_id, unit_code, unit_type, tenure, deposit, rent, maintenance_fee,
-                area_m2, room_count, bathroom_count, floor, direction, occupancy_available_at,
-                unit_extra, created_at, updated_at
+                notice_id, unit_code, unit_type, deposit, rent, maintenance_fee,
+                area_m2, floor, room_number, occupancy_available, occupancy_available_at,
+                capacity, created_at, updated_at
             ) VALUES (
-                :notice_id, :unit_code, :unit_type, :tenure, :deposit, :rent, :maintenance_fee,
-                :area_m2, :room_count, :bathroom_count, :floor, :direction, :occupancy_available_at,
-                :unit_extra, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+                :notice_id, :unit_code, :unit_type, :deposit, :rent, :maintenance_fee,
+                :area_m2, :floor, :room_number, :occupancy_available, :occupancy_available_at,
+                :capacity, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
             ) ON CONFLICT (id) DO UPDATE SET
                 notice_id = EXCLUDED.notice_id,
                 unit_code = EXCLUDED.unit_code,
                 unit_type = EXCLUDED.unit_type,
-                tenure = EXCLUDED.tenure,
                 deposit = EXCLUDED.deposit,
                 rent = EXCLUDED.rent,
                 maintenance_fee = EXCLUDED.maintenance_fee,
                 area_m2 = EXCLUDED.area_m2,
-                room_count = EXCLUDED.room_count,
-                bathroom_count = EXCLUDED.bathroom_count,
                 floor = EXCLUDED.floor,
-                direction = EXCLUDED.direction,
+                room_number = EXCLUDED.room_number,
+                occupancy_available = EXCLUDED.occupancy_available,
                 occupancy_available_at = EXCLUDED.occupancy_available_at,
-                unit_extra = EXCLUDED.unit_extra,
+                capacity = EXCLUDED.capacity,
                 updated_at = CURRENT_TIMESTAMP
             RETURNING id
             """
@@ -362,18 +395,26 @@ class NormalizedDataLoader:
             
             if unit_id is None:
                 continue
-                
+            
+            # unit_features 데이터 준비
             feature_data = {
                 'unit_id': unit_id,
-                'feature': feature.get('feature'),
-                'value': feature.get('value')
+                'room_count': feature.get('room_count'),
+                'bathroom_count': feature.get('bathroom_count'),
+                'direction': feature.get('direction')
             }
             
-            # UPSERT 쿼리 (housing 스키마 사용)
+            # UPSERT 쿼리
             query = """
-            INSERT INTO housing.unit_features (unit_id, feature, value)
-            VALUES (:unit_id, :feature, :value)
-            ON CONFLICT (unit_id, feature, value) DO NOTHING
+            INSERT INTO housing.unit_features (
+                unit_id, room_count, bathroom_count, direction, created_at, updated_at
+            ) VALUES (
+                :unit_id, :room_count, :bathroom_count, :direction, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+            ) ON CONFLICT (unit_id) DO UPDATE SET
+                room_count = EXCLUDED.room_count,
+                bathroom_count = EXCLUDED.bathroom_count,
+                direction = EXCLUDED.direction,
+                updated_at = CURRENT_TIMESTAMP
             """
             self.connection.execute(text(query), feature_data)
     
@@ -395,13 +436,14 @@ class NormalizedDataLoader:
                 
             tag_data = {
                 'notice_id': notice_id,
-                'tag': tag.get('tag')
+                'tag_type': tag.get('tag_type'),
+                'tag_value': tag.get('tag_value')
             }
             
             # UPSERT 쿼리 (housing 스키마 사용)
             query = """
-            INSERT INTO housing.notice_tags (notice_id, tag)
-            VALUES (:notice_id, :tag)
-            ON CONFLICT (notice_id, tag) DO NOTHING
+            INSERT INTO housing.notice_tags (notice_id, tag_type, tag_value, created_at, updated_at)
+            VALUES (:notice_id, :tag_type, :tag_value, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            ON CONFLICT (notice_id, tag_type, tag_value) DO NOTHING
             """
             self.connection.execute(text(query), tag_data)

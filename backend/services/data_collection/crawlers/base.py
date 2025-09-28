@@ -6,7 +6,7 @@ from __future__ import annotations
 import csv, json, re, hashlib
 from pathlib import Path
 import shutil
-from backend.libs.utils.paths import (make_run_dir, RAW_DIR, today_ymd, sanitize_component)
+from backend.libs.utils.paths import (make_run_dir, HOUSING_DIR, today_ymd, sanitize_component)
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 
@@ -67,7 +67,7 @@ def clean_today(source: str, *, dry_run: bool = False) -> int:
     """Delete today's run directories for a given source under data/raw."""
     src = sanitize_component(source)
     date_str = today_ymd()
-    base: Path = RAW_DIR / src
+    base: Path = HOUSING_DIR / src
     pattern = f"{date_str}__*"
 
     removed = 0
@@ -88,7 +88,7 @@ def clean_today(source: str, *, dry_run: bool = False) -> int:
     return removed
 
 def run_dir(source: str, run_id: str | None = None, date_ymd: str | None = None) -> Path:
-    """Return the canonical run directory under data/raw/<source>/<YYYY-MM-DD>__<run_id>/."""
+    """Return the canonical run directory under data/housing/<source>/<YYYY-MM-DD>__<run_id>/."""
     return make_run_dir(source, run_id=run_id, date_ymd=date_ymd)
 
 def ensure_dirs(base: Path):

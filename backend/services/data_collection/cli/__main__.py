@@ -5,9 +5,9 @@ import sys, runpy
 from importlib import import_module
 
 COMMANDS = {
-    "crawl": "backend.services.data_collection.cli.crawl_platforms_raw",
+    "crawl": "backend.services.data_collection.cli.housing.crawl_platforms_raw",
     "api": "backend.services.data_collection.cli.api_cli",
-    "normalized": "backend.services.data_collection.cli.normalized_cli",
+    "normalized": "backend.services.data_collection.cli.housing.normalized_cli",
     # add more commands here as you modularize
 }
 

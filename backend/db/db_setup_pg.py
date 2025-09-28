@@ -8,10 +8,8 @@ def setup_schema():
     """PostgreSQL 스키마 적용"""
     # 새로운 스키마 파일들 사용
     schema_files = [
-        "backend/db/postgresql/schema_setup.sql",
-        "backend/db/postgresql/housing_schema.sql", 
-        "backend/db/postgresql/infra_schema.sql",
-        "backend/db/postgresql/rtms_schema.sql"
+        "backend/db/schema_setup.sql",
+        "backend/db/housing/housing_schema.sql"
     ]
     
     eng = get_engine()
@@ -40,3 +38,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+

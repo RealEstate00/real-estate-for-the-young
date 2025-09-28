@@ -21,10 +21,6 @@ Commands:
   list                List all tables
   structure <table>   Show table structure
   test                Test database connection
-  migrate-pg          Migrate data to PostgreSQL
-  migrate-db          Generic migration script
-  load-csv-mysql      Load CSV into MySQL
-  load-mysql          Load into MySQL
   db-create-load      Create DB and load
 
 Examples:
@@ -32,8 +28,6 @@ Examples:
   data-db list
   data-db structure bus_stops
   data-db test
-  data-db migrate-pg
-  data-db load-mysql
 """
 
 def create_tables():
@@ -58,17 +52,17 @@ def drop_tables():
             # 외래키 제약조건 비활성화
             conn.execute(text("SET session_replication_role = replica;"))
             
-            # 모든 테이블 삭제
+            # housing 스키마의 모든 테이블 삭제
             result = conn.execute(text("""
                 SELECT tablename FROM pg_tables 
-                WHERE schemaname = 'public' 
+                WHERE schemaname = 'housing' 
                 AND tablename NOT LIKE 'pg_%'
             """))
             
             tables = [row[0] for row in result]
             for table in tables:
-                conn.execute(text(f"DROP TABLE IF EXISTS {table} CASCADE"))
-                print(f"🗑️  {table} 테이블 삭제")
+                conn.execute(text(f"DROP TABLE IF EXISTS housing.{table} CASCADE"))
+                print(f"🗑️  housing.{table} 테이블 삭제")
             
             # 외래키 제약조건 재활성화
             conn.execute(text("SET session_replication_role = DEFAULT;"))
@@ -187,31 +181,11 @@ def main() -> None:
         show_table_structure(rest[0])
     elif cmd == "test":
         test_db()
-    elif cmd == "migrate-pg":
-        # Import and run migration
-        import runpy
-        sys.argv = ["backend.services.data_collection.cli.migrate_to_postgresql"] + rest
-        runpy.run_module("backend.services.data_collection.cli.migrate_to_postgresql", run_name="__main__")
-    elif cmd == "migrate-db":
-        # Import and run migration
-        import runpy
-        sys.argv = ["backend.services.data_collection.cli.migrate_database"] + rest
-        runpy.run_module("backend.services.data_collection.cli.migrate_database", run_name="__main__")
-    elif cmd == "load-csv-mysql":
-        # Import and run CSV loading
-        import runpy
-        sys.argv = ["backend.services.data_collection.cli.load_csv_to_mysql"] + rest
-        runpy.run_module("backend.services.data_collection.cli.load_csv_to_mysql", run_name="__main__")
-    elif cmd == "load-mysql":
-        # Import and run MySQL loading
-        import runpy
-        sys.argv = ["backend.services.data_collection.cli.load_to_mysql"] + rest
-        runpy.run_module("backend.services.data_collection.cli.load_to_mysql", run_name="__main__")
     elif cmd == "db-create-load":
         # Import and run DB create and load
         import runpy
-        sys.argv = ["backend.services.data_collection.cli.db_create_and_load"] + rest
-        runpy.run_module("backend.services.data_collection.cli.db_create_and_load", run_name="__main__")
+        sys.argv = ["backend.services.ingestion.cli.db_create_and_load"] + rest
+        runpy.run_module("backend.services.ingestion.cli.db_create_and_load", run_name="__main__")
     else:
         print(f"Unknown command: {cmd}\n")
         print(HELP)

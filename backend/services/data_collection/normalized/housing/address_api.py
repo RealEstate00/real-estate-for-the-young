@@ -13,9 +13,8 @@ import logging
 from typing import Dict, Optional, List
 from pathlib import Path
 import time
-from .jibun_api import JusoAPI
-from .building_type_api import BuildingTypeAPI
-from .coordinate_api import VWorldCoordinateAPI
+from backend.services.data_collection.normalized.housing.jibun_api import JusoAPI
+from backend.services.data_collection.normalized.housing.vworld_api import VWorldAPI
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +23,7 @@ logger = logging.getLogger(__name__)
 # ----------------------------
 
 class AddressAPI:
-    """통합 주소 정규화 클래스 - JUSO API와 주거유형 API 통합"""
+    """통합 주소 정규화 클래스 - JUSO API와 VWorld API 통합"""
     
     def __init__(self, juso_api_key: str = None, vworld_api_key: str = None, housing_data_dir: str = None):
         self.juso_api_key = juso_api_key or self._load_juso_api_key()
@@ -32,8 +31,7 @@ class AddressAPI:
         
         # API 클래스들 초기화
         self.juso_api = JusoAPI(self.juso_api_key) if self.juso_api_key else None
-        self.vworld_api = VWorldCoordinateAPI(self.vworld_api_key) if self.vworld_api_key else None
-        self.building_type_api = BuildingTypeAPI() if self.juso_api_key else None
+        self.vworld_api = VWorldAPI(self.vworld_api_key) if self.vworld_api_key else None
         
         self.session = requests.Session()
     
@@ -53,9 +51,8 @@ class AddressAPI:
             logger.warning("VWORLD_API_KEY 환경변수가 설정되지 않았습니다. 좌표 정보를 가져올 수 없습니다.")
         return api_key
     
-    
     def normalize_address(self, address: str, building_name: str = '', description: str = '') -> Optional[Dict]:
-        """통합 주소 정규화 - JUSO API와 주거유형 API 통합"""
+        """통합 주소 정규화 - JUSO API와  VWorld API  API 통합"""
         try:
             result = {
                 'address_raw': address,
@@ -180,8 +177,6 @@ class AddressAPI:
         
         return ''
     
-    
-
 # ----------------------------
 # 2) 편의 함수
 # ----------------------------

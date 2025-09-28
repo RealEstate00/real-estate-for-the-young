@@ -10,13 +10,13 @@ from pathlib import Path
 backend_dir = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(backend_dir))
 
-from ..crawlers.base import Progress, clean_today, run_dir
-from ..crawlers.so import SoHouseCrawler
-from ..crawlers.co import CoHouseCrawler
-from ..crawlers.youth import YouthCrawler
-from ..crawlers.sh import HappyHousingCrawler, SHAnnouncementCrawler
-from ..crawlers.lh import LHAnnouncementCrawler
-from ..crawlers.intro_crawler import IntroCrawler
+from backend.services.data_collection.crawlers.base import Progress, clean_today, run_dir
+from backend.services.data_collection.crawlers.so import SoHouseCrawler
+from backend.services.data_collection.crawlers.co import CoHouseCrawler
+from backend.services.data_collection.crawlers.youth import YouthCrawler
+from backend.services.data_collection.crawlers.sh import HappyHousingCrawler, SHAnnouncementCrawler
+from backend.services.data_collection.crawlers.lh import LHAnnouncementCrawler
+from backend.services.data_collection.crawlers.intro_crawler import IntroCrawler
 
 def main():
     ap = argparse.ArgumentParser(description="Crawl RAW with images and intro pages")

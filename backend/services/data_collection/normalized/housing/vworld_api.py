@@ -8,7 +8,7 @@ from typing import Optional, Dict, Tuple
 
 logger = logging.getLogger(__name__)
 
-class VWorldCoordinateAPI:
+class VWorldAPI:
     """VWorld API를 사용한 좌표 검색 클래스"""
     
     def __init__(self, api_key: str):

@@ -15,8 +15,7 @@ from typing import Optional
 project_root = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-from backend.services.data_collection.normalized.db_loader import NormalizedDataLoader
-from backend.services.data_collection.normalized.infra_loader import InfraDataLoader
+from backend.db.housing.db_loader import NormalizedDataLoader
 from backend.db.db_utils_pg import test_connection
 
 # 로깅 설정
@@ -64,13 +63,13 @@ def load_housing_data(normalized_data_dir: str, db_url: Optional[str] = None) ->
         
         with NormalizedDataLoader(db_url) as loader:
             success = loader.load_from_directory(normalized_path)
-            
-            if success:
-                logger.info("주택 데이터 로드 완료")
-                return True
-            else:
-                logger.error("주택 데이터 로드 실패")
-                return False
+        
+        if success:
+            logger.info("주택 데이터 로드 완료")
+            return True
+        else:
+            logger.error("주택 데이터 로드 실패")
+            return False
                 
     except Exception as e:
         logger.error(f"주택 데이터 로드 중 오류 발생: {e}")
@@ -119,8 +118,10 @@ def load_infra_data(db_url: Optional[str] = None) -> bool:
         # 공공시설 데이터 로드
         logger.info("공공시설 데이터 로드 시작")
         
-        loader = InfraDataLoader(db_url)
-        success = loader.load_all_infra()
+        # loader = InfraDataLoader(db_url)
+        # success = loader.load_all_infra()
+        # TODO: InfraDataLoader 구현 필요
+        success = False
         
         if success:
             logger.info("공공시설 데이터 로드 완료")
@@ -169,15 +170,17 @@ def load_normalized_data(normalized_data_dir: str, db_url: Optional[str] = None)
         # 정규화된 데이터 로드
         logger.info(f"정규화된 데이터 로드 시작: {normalized_path}")
         
-        with NormalizedDataLoader(db_url) as loader:
-            success = loader.load_from_directory(normalized_path)
-            
-            if success:
-                logger.info("정규화된 데이터 로드 완료")
-                return True
-            else:
-                logger.error("정규화된 데이터 로드 실패")
-                return False
+        # loader = DatabaseLoader(db_url)
+        # success = loader.load_normalized_data(normalized_path)
+        # TODO: DatabaseLoader 구현 필요
+        success = False
+        
+        if success:
+            logger.info("정규화된 데이터 로드 완료")
+            return True
+        else:
+            logger.error("정규화된 데이터 로드 실패")
+            return False
                 
     except Exception as e:
         logger.error(f"데이터 로드 중 오류 발생: {e}")
