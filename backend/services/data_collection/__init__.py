@@ -1,1 +1,1 @@
-# Data ingestion service
+# Data collection service
