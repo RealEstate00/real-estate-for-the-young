@@ -234,6 +234,7 @@ $RECYCLE.BIN/
 
 # data outputs // 크롤링 파일 제외
 backend/data/housing/
+backend/data/raw/
 backend/data/rtms/
 backend/data/public_data/
 backend/data/public_api/
