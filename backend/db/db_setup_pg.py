@@ -2,48 +2,47 @@
 # Apply postgresql/schema.sql to PostgreSQL. No emojis in comments.
 from pathlib import Path
 from sqlalchemy import text
-from db.db_utils_pg import get_engine
+from backend.db.db_utils_pg import get_engine
 
 def setup_schema():
     """PostgreSQL 스키마 적용"""
-    # 스키마 파일들을 순서대로 정의
+    # 스키마 파일 경로 설정 (상대 경로 사용)
+    base_dir = Path(__file__).parent
     schema_files = [
-        Path("backend/db/schema_setup.sql"),           # 기본 스키마 설정
-        Path("backend/db/housing/housing_schema.sql"), # 주택 스키마
-        Path("backend/db/infra/infra_schema.sql"),     # 인프라 스키마
-        Path("backend/db/infra/rtms_schema.sql")       # RTMS 스키마
+        base_dir / "schema_setup.sql",
+        base_dir / "housing" / "housing_schema.sql"
     ]
-    
-    # 존재하지 않는 파일들 필터링
-    existing_files = [f for f in schema_files if f.exists()]
-    
-    if not existing_files:
-        print("❌ 스키마 파일이 없습니다.")
-        return False
-    
-    print(f"📁 적용할 스키마 파일들: {[f.name for f in existing_files]}")
     
     eng = get_engine()
     
     try:
         with eng.begin() as conn:
-            for schema_file in existing_files:
-                print(f"📄 스키마 적용 중: {schema_file.name}")
+            for schema_file in schema_files:
+                if not schema_file.exists():
+                    print(f"Schema file not found: {schema_file}")
+                    return False
+                
+                print(f"Applying schema: {schema_file}")
                 sql = schema_file.read_text(encoding="utf-8")
                 conn.execute(text(sql))
-                print(f"✅ {schema_file.name} 적용 완료")
                 
-        print("🎉 모든 PostgreSQL 스키마 적용 완료!")
+        print("PostgreSQL schema created/verified successfully.")
         return True
     except Exception as e:
-        print(f"❌ 스키마 적용 실패: {e}")
+        print(f"Error applying schema: {e}")
         return False
 
 def main():
     """PostgreSQL 스키마 적용"""
+    import sys
+    if len(sys.argv) > 1 and sys.argv[1] in ['--help', '-h']:
+        print("PostgreSQL 스키마 설정 도구")
+        print("사용법: python -m backend.db.db_setup_pg")
+        print("기능: PostgreSQL 데이터베이스에 housing 스키마를 생성/업데이트합니다.")
+        return 0
     return setup_schema()
 
 if __name__ == "__main__":
-    main()
+    exit(main())
 
 

@@ -1,148 +1,136 @@
--- ==========================================================
--- Fixed Housing Schema (matches normalized data structure)
--- - Updated column names to match normalized JSON
--- - Fixed FK relationships
--- - Added missing columns
--- ==========================================================
-
--- Set schema context
+-- =====================================================================
+-- Housing Schema (Natural-key First, dependency-safe)
+-- =====================================================================
 SET search_path TO housing, public;
 
--- 0) code_master (계층적 코드 테이블)
-CREATE TABLE IF NOT EXISTS housing.code_master (
-    cd VARCHAR(20) PRIMARY KEY,
-    name VARCHAR(100) NOT NULL,
+-- 0) DROP views if any
+DROP VIEW IF EXISTS housing.v_building_type_stats CASCADE;
+DROP VIEW IF EXISTS housing.v_address_stats CASCADE;
+DROP VIEW IF EXISTS housing.v_platform_stats CASCADE;
+DROP VIEW IF EXISTS housing.v_notices_with_stats CASCADE;
+DROP VIEW IF EXISTS housing.v_units_with_calculations CASCADE;
+
+-- 1) MASTER / LOOKUP
+DROP TABLE IF EXISTS housing.code_master CASCADE;
+CREATE TABLE housing.code_master (
+    cd          VARCHAR(50) PRIMARY KEY,
+    name        VARCHAR(100) NOT NULL,
     description TEXT,
-    upper_cd VARCHAR(20),
-    
-    -- self-reference FK (계층 구조)
+    upper_cd    VARCHAR(50),
     CONSTRAINT fk_code_master_parent
-    FOREIGN KEY (upper_cd) REFERENCES housing.code_master (cd)
-    ON DELETE RESTRICT
+      FOREIGN KEY (upper_cd) REFERENCES housing.code_master(cd)
+      ON DELETE RESTRICT
 );
 
--- 1) platforms
+-- 2) PLATFORMS
 DROP TABLE IF EXISTS housing.platforms CASCADE;
 CREATE TABLE housing.platforms (
-    id SERIAL PRIMARY KEY,
-    code VARCHAR(50) UNIQUE NOT NULL,
-    name VARCHAR(100) NOT NULL,
-    url TEXT,  -- Changed from base_url to url
-    platform_code VARCHAR(50) REFERENCES housing.code_master(cd),  -- FK to code_master
-    is_active BOOLEAN DEFAULT true,
-    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    code           VARCHAR(50) PRIMARY KEY,
+    name           VARCHAR(100) NOT NULL,
+    url            TEXT,
+    platform_code  VARCHAR(50) REFERENCES housing.code_master(cd),
+    is_active      BOOLEAN DEFAULT TRUE,
+    created_at     TIMESTAMPTZ DEFAULT now(),
+    updated_at     TIMESTAMPTZ DEFAULT now(),
+    CONSTRAINT ck_platforms_code_format CHECK (code ~ '^[a-z_]+$')
 );
 
--- seed (safe on re-run)
-INSERT INTO housing.platforms (code, name, url, is_active) VALUES
-('sohouse', '서울시 사회주택', 'https://soco.seoul.go.kr/soHouse', true),
-('cohouse', '서울시 공동체주택', 'https://soco.seoul.go.kr/coHouse', true),
-('youth', '청년안심주택', 'https://soco.seoul.go.kr/youth', true),
-('sh', 'SH공사', 'https://www.sh.co.kr', true),
-('lh', 'LH공사', 'https://www.lh.or.kr', true)
-ON CONFLICT (code) DO NOTHING;
-
--- 2) addresses
+-- 3) ADDRESSES  (SERIAL PK + 외부 안정키 UNIQUE)
 DROP TABLE IF EXISTS housing.addresses CASCADE;
 CREATE TABLE housing.addresses (
-    id SERIAL PRIMARY KEY,
-    address_raw TEXT NOT NULL,
-    ctpv_nm VARCHAR(50),  -- 시도명
-    sgg_nm VARCHAR(50),   -- 시군구명
-    emd_nm VARCHAR(50),   -- 읍면동명
-    emd_cd VARCHAR(10) REFERENCES housing.code_master(cd),  -- 읍면동코드 FK
-    building_main_no VARCHAR(20),  -- 건물본번
-    building_sub_no VARCHAR(20),   -- 건물부번
-    building_name  TEXT,  -- 건물명
-    road_name_full TEXT,  -- 도로명주소
-    jibun_name_full TEXT,  -- 지번주소
-    latitude DECIMAL(10, 8),
-    longitude DECIMAL(11, 8),
-    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    id               SERIAL PRIMARY KEY,
+    address_ext_id   VARCHAR(255) NOT NULL UNIQUE,
+    address_raw      TEXT NOT NULL,
+    ctpv_nm          VARCHAR(50),
+    sgg_nm           VARCHAR(50),
+    emd_nm           VARCHAR(50),
+    emd_cd           VARCHAR(20) REFERENCES housing.code_master(cd),
+    building_main_no VARCHAR(20),
+    building_sub_no  VARCHAR(20),
+    building_name    TEXT,
+    road_name_full   TEXT,
+    jibun_name_full  TEXT,
+    latitude         DECIMAL(10, 8),
+    longitude        DECIMAL(11, 8),
+    created_at       TIMESTAMPTZ DEFAULT now(),
+    updated_at       TIMESTAMPTZ DEFAULT now(),
+    CONSTRAINT ck_addresses_latitude  CHECK (latitude  IS NULL OR (latitude  BETWEEN -90  AND 90)),
+    CONSTRAINT ck_addresses_longitude CHECK (longitude IS NULL OR (longitude BETWEEN -180 AND 180))
 );
+CREATE INDEX IF NOT EXISTS idx_addresses_ext ON housing.addresses(address_ext_id);
 
--- 3) notices
+-- 4) NOTICES
 DROP TABLE IF EXISTS housing.notices CASCADE;
 CREATE TABLE housing.notices (
-    id SERIAL PRIMARY KEY,
-    platform_id INTEGER NOT NULL REFERENCES housing.platforms(id),
-    source_key VARCHAR(255) NOT NULL,  -- Changed from source to source_key
-    title TEXT NOT NULL,
-    status VARCHAR(50) DEFAULT 'open',
-    address_raw TEXT,
-    address_id INTEGER REFERENCES housing.addresses(id),
-    building_type VARCHAR(100) REFERENCES housing.code_master(cd),  -- FK to code_master
-    notice_extra JSONB,  -- Changed from description_raw to notice_extra
-    has_images BOOLEAN DEFAULT false,
-    has_floorplan BOOLEAN DEFAULT false,
-    has_documents BOOLEAN DEFAULT false,
-    list_url TEXT,
-    detail_url TEXT,
-    posted_at TIMESTAMPTZ,
-    last_modified TIMESTAMPTZ,
-    apply_start_at TIMESTAMPTZ,
-    apply_end_at TIMESTAMPTZ,
-    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    
-    -- Unique constraint
-    UNIQUE(platform_id, source_key)
+    notice_id       VARCHAR(255) PRIMARY KEY,
+    platform_code   VARCHAR(50) NOT NULL REFERENCES housing.platforms(code),
+    title           TEXT NOT NULL,
+    status          VARCHAR(50) DEFAULT 'open',
+    address_raw     TEXT,
+    address_id      INTEGER REFERENCES housing.addresses(id) ON DELETE SET NULL,
+    building_type   VARCHAR(50) REFERENCES housing.code_master(cd),
+    notice_extra    JSONB DEFAULT '{}'::jsonb,
+    has_images      BOOLEAN DEFAULT FALSE,
+    has_floorplan   BOOLEAN DEFAULT FALSE,
+    has_documents   BOOLEAN DEFAULT FALSE,
+    list_url        TEXT,
+    detail_url      TEXT,
+    posted_at       TIMESTAMPTZ,
+    last_modified   TIMESTAMPTZ,
+    apply_start_at  TIMESTAMPTZ,
+    apply_end_at    TIMESTAMPTZ,
+    created_at      TIMESTAMPTZ DEFAULT now(),
+    updated_at      TIMESTAMPTZ DEFAULT now(),
+    CONSTRAINT ck_notices_status CHECK (status IN ('open','closed','suspended','draft')),
+    CONSTRAINT ck_notices_dates  CHECK (apply_start_at IS NULL OR apply_end_at IS NULL OR apply_start_at <= apply_end_at)
 );
+CREATE INDEX IF NOT EXISTS idx_notices_platform      ON housing.notices(platform_code);
+CREATE INDEX IF NOT EXISTS idx_notices_building_type ON housing.notices(building_type);
 
--- 4) units
+-- 5) UNITS
 DROP TABLE IF EXISTS housing.units CASCADE;
 CREATE TABLE housing.units (
-    id SERIAL PRIMARY KEY,
-    notice_id INTEGER NOT NULL REFERENCES housing.notices(id),  -- FK to notices table
-    unit_code VARCHAR(255),  -- Changed from space_id to unit_code
-    unit_type VARCHAR(100),
-    deposit INTEGER DEFAULT 0,
-    rent INTEGER DEFAULT 0,
-    maintenance_fee INTEGER DEFAULT 0,  -- Changed from management_fee
-    area_m2 DECIMAL(8, 2),
-    floor INTEGER,
-    room_number VARCHAR(50),  -- Changed from room_no
-    occupancy_available BOOLEAN DEFAULT false,  -- Changed from is_available
-    occupancy_available_at TIMESTAMPTZ,  -- Changed from available_at
-    capacity INTEGER,  -- Changed from max_occupancy
-    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    unit_id             VARCHAR(255) PRIMARY KEY,
+    notice_id           VARCHAR(255) NOT NULL REFERENCES housing.notices(notice_id) ON DELETE CASCADE,
+    unit_type           VARCHAR(50),
+    deposit             NUMERIC,
+    rent                NUMERIC,
+    maintenance_fee     NUMERIC,
+    area_m2             NUMERIC,
+    floor               VARCHAR(20),
+    room_number         VARCHAR(50),
+    occupancy_available BOOLEAN,
+    occupancy_available_at TIMESTAMPTZ,
+    capacity            INTEGER,
+    created_at          TIMESTAMPTZ DEFAULT now(),
+    updated_at          TIMESTAMPTZ DEFAULT now()
 );
 
--- 5) unit_features
+-- 6) UNIT FEATURES (1:1 units)
 DROP TABLE IF EXISTS housing.unit_features CASCADE;
 CREATE TABLE housing.unit_features (
-    id SERIAL PRIMARY KEY,
-    unit_id INTEGER NOT NULL REFERENCES housing.units(id),  -- Fixed FK reference
-    room_count INTEGER,
-    bathroom_count INTEGER,
-    direction VARCHAR(20),
-    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    id              SERIAL PRIMARY KEY,
+    unit_id         VARCHAR(255) NOT NULL REFERENCES housing.units(unit_id) ON DELETE CASCADE,
+    room_count      INTEGER,
+    bathroom_count  INTEGER,
+    direction       VARCHAR(20),
+    created_at      TIMESTAMPTZ DEFAULT now(),
+    updated_at      TIMESTAMPTZ DEFAULT now(),
+    CONSTRAINT uk_unit_features_unit_id UNIQUE (unit_id),
+    CONSTRAINT ck_unit_features_room_count     CHECK (room_count     IS NULL OR room_count     BETWEEN 0 AND 10),
+    CONSTRAINT ck_unit_features_bathroom_count CHECK (bathroom_count IS NULL OR bathroom_count BETWEEN 0 AND 5)
 );
 
--- 6) notice_tags
+-- 7) NOTICE TAGS
 DROP TABLE IF EXISTS housing.notice_tags CASCADE;
 CREATE TABLE housing.notice_tags (
-    id SERIAL PRIMARY KEY,
-    notice_id INTEGER NOT NULL REFERENCES housing.notices(id),
-    tag TEXT NOT NULL,  -- 전체 태그 내용 (예: "지하철:회기역", "자격요건:서울특별시에 거주하는...")
-    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    
-    -- Unique constraint for (notice_id, tag) combination
-    UNIQUE(notice_id, tag)
+    id          SERIAL PRIMARY KEY,
+    notice_id   VARCHAR(255) NOT NULL REFERENCES housing.notices(notice_id) ON DELETE CASCADE,
+    tag_type    VARCHAR(50) NOT NULL REFERENCES housing.code_master(cd) ON DELETE RESTRICT,
+    tag_value   TEXT NOT NULL,
+    created_at  TIMESTAMPTZ DEFAULT now(),
+    updated_at  TIMESTAMPTZ DEFAULT now(),
+    UNIQUE (notice_id, tag_type, tag_value)
 );
-
--- Indexes for performance
-CREATE INDEX IF NOT EXISTS idx_notices_platform_id ON housing.notices(platform_id);
-CREATE INDEX IF NOT EXISTS idx_notices_address_id ON housing.notices(address_id);
-CREATE INDEX IF NOT EXISTS idx_notices_status ON housing.notices(status);
-CREATE INDEX IF NOT EXISTS idx_units_notice_id ON housing.units(notice_id);
-CREATE INDEX IF NOT EXISTS idx_unit_features_unit_id ON housing.unit_features(unit_id);
-CREATE INDEX IF NOT EXISTS idx_notice_tags_notice_id ON housing.notice_tags(notice_id);
-
--- Constraints
--- Note: Rent constraint removed due to data quality issues
+CREATE INDEX IF NOT EXISTS idx_notice_tags_notice ON housing.notice_tags(notice_id);
+CREATE INDEX IF NOT EXISTS idx_notice_tags_type ON housing.notice_tags(tag_type);
