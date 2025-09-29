@@ -20,10 +20,10 @@ sys.path.insert(0, str(project_root))
 
 from backend.services.data_collection.normalized.housing.normalizer import DataNormalizer
 from backend.services.data_collection.normalized.housing.data_quality_enhancer import DataQualityEnhancer, print_quality_report
-from backend.db.housing.db_loader import NormalizedDataLoader
+from backend.db.housing.db_loader import HousingLoader
 from backend.db.db_utils_pg import get_engine
 
-HELP = """data-collection normalized <command> [args]
+HELP = """data-collection-housing normalized <command> [args]
 
 Commands:
   process              최근 날짜의 모든 raw 데이터를 정규화 (고급 데이터 품질 개선 포함)
@@ -40,14 +40,18 @@ Data Quality Enhancement (기본 활성화):
   - Platform 키 통일 (platform_id→code)
   - 원본 단위 정보 보관 (deposit_scale, rent_scale 등)
 
+File Management:
+  - 기존 파일 자동 덮어쓰기 (중복 파일 생성 방지)
+  - 정규화 과정에서 동일한 파일명으로 덮어쓰기 수행
+
 Examples:
-  data-collection normalized process
-  data-collection normalized process --platform sohouse
-  data-collection normalized process --date 2025-09-15
-  data-collection normalized process --db
-  data-collection normalized process --fresh
-  data-collection normalized process --platform cohouse --fresh
-  ddata-collection normalized process --no-enhance
+  data-collection-housing normalized process
+  data-collection-housing normalized process --platform sohouse
+  data-collection-housing normalized process --date 2025-09-15
+  data-collection-housing normalized process --db
+  data-collection-housing normalized process --fresh
+  data-collection-housing normalized process --platform cohouse --fresh
+  data-collection-housing normalized process --no-enhance
 """
 
 def find_latest_raw_data(platform: str = None, date: str = None) -> List[Path]:
@@ -112,9 +116,9 @@ def get_normalized_output_path(raw_file: Path) -> Path:
     from datetime import datetime
     today = datetime.now().strftime("%Y-%m-%d")
     
-    # backend/data/normalized/작업진행날짜/플랫폼명/ 구조로 생성
+    # backend/data/normalized/housing/작업진행날짜/플랫폼명/ 구조로 생성
     backend_dir = Path(__file__).parent.parent.parent.parent.parent
-    output_path = backend_dir / "data" / "normalized" / today / platform_name
+    output_path = backend_dir / "data" / "normalized" / "housing" / today / platform_name
     output_path.mkdir(parents=True, exist_ok=True)
     
     return output_path
@@ -142,7 +146,7 @@ def normalize_data(raw_csv_path: str, enhance_quality: bool = True) -> bool:
         # 실시간 저장을 위한 콜백 함수
         def save_progress(table_name: str, data: list):
             # 데이터 품질 개선 적용
-            if enhance_quality and table_name in ['units', 'notices', 'platforms']:
+            if enhance_quality and table_name in ['units', 'notices', 'platforms', 'notice_tags']:
                 print(f"🔧 {table_name} 고급 데이터 품질 개선 중...")
                 
                 if table_name == 'units':
@@ -158,11 +162,25 @@ def normalize_data(raw_csv_path: str, enhance_quality: bool = True) -> bool:
                         notices = quality_enhancer.enhance_notices_data(normalized_data['notices'], data)
                         _save_table_data('notices', notices, output_path)
                         del normalized_data['notices']
+                elif table_name == 'notice_tags':
+                    data = quality_enhancer.enhance_notice_tags_data(data)
             
+            # 항상 기본 파일명으로 저장 (접미사 제거)
             _save_table_data(table_name, data, output_path)
+        
+        # 정규화 실행 후 남은 notices 데이터 처리
+        def finalize_notices():
+            if 'notices' in normalized_data:
+                print(f"🔧 notices 최종 처리 중...")
+                notices = quality_enhancer.enhance_notices_data(normalized_data['notices'], [])
+                _save_table_data('notices', notices, output_path)
+                del normalized_data['notices']
         
         # 정규화 실행 (실시간 저장)
         normalizer.normalize_raw_data(raw_path, save_callback=save_progress)
+        
+        # 남은 notices 데이터 최종 처리
+        finalize_notices()
         
         # codes.json 복사 (공통 파일)
         codes_file = Path("backend/data/normalized/2025-09-28/codes.json")
@@ -187,8 +205,13 @@ def normalize_data(raw_csv_path: str, enhance_quality: bool = True) -> bool:
         return False
 
 def _save_table_data(table_name: str, data: list, output_path: Path) -> None:
-    """테이블 데이터를 파일로 저장"""
+    """테이블 데이터를 파일로 저장 (기존 파일 덮어쓰기)"""
     output_file = output_path / f"{table_name}.json"
+    
+    # 기존 파일이 있으면 삭제 (덮어쓰기)
+    if output_file.exists():
+        output_file.unlink()
+        print(f"🗑️  기존 파일 삭제: {output_file.name}")
     
     # NaN 값을 null로 변환하는 함수
     def convert_nan_to_null(obj):
@@ -246,14 +269,17 @@ def load_to_db(raw_csv_path: str, db_url: str = None) -> bool:
 def clean_normalized_data(platform: str = None, date: str = None) -> None:
     """기존 정규화된 데이터 삭제"""
     backend_dir = Path(__file__).parent.parent.parent.parent.parent
-    normalized_dir = backend_dir / "backend" / "data" / "normalized"
+    normalized_dir = backend_dir / "data" / "normalized" / "housing"
     
     if not normalized_dir.exists():
         logging.info("[INFO] Normalized data directory not found")
         return
     
-    # 날짜별로 검색 (실제 구조: normalized/날짜/플랫폼)
-    date_dirs = [d for d in normalized_dir.iterdir() if d.is_dir()]
+    # 날짜별로 검색 (실제 구조: normalized/housing/날짜/플랫폼)
+    # 날짜 형식 디렉토리만 필터링 (YYYY-MM-DD 형식)
+    import re
+    date_pattern = re.compile(r'^\d{4}-\d{2}-\d{2}$')
+    date_dirs = [d for d in normalized_dir.iterdir() if d.is_dir() and date_pattern.match(d.name)]
     if not date_dirs:
         logging.info("[INFO] No normalized data found")
         return

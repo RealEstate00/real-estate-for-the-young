@@ -22,7 +22,7 @@ class BuildingTypeMapper:
         if codes_file_path is None:
             # 기본 경로 설정
             project_root = Path(__file__).parent.parent.parent.parent
-            codes_file_path = project_root / "backend" / "data" / "normalized" / "codes.json"
+            codes_file_path = project_root / "backend" / "data" / "normalized" / "housing" / "codes.json"
         
         self.codes_file_path = Path(codes_file_path)
         self.building_type_mapping = {}

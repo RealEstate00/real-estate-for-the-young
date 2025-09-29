@@ -231,10 +231,13 @@ def main() -> None:
     elif cmd == "test":
         test_db()
     elif cmd == "db-create-load":
-        # Import and run DB create and load
-        import runpy
-        sys.argv = ["backend.services.ingestion.cli.db_create_and_load"] + rest
-        runpy.run_module("backend.services.ingestion.cli.db_create_and_load", run_name="__main__")
+        # This command has been deprecated. Use 'data-db create' and 'data-load' separately.
+        print("❌ 'db-create-load' 명령어는 더 이상 지원되지 않습니다.")
+        print("💡 대신 다음 명령어를 사용하세요:")
+        print("   data-db create    # 데이터베이스 생성")
+        print("   data-load housing # 주택 데이터 로드")
+        print("   data-load infra   # 공공시설 데이터 로드")
+        sys.exit(1)
     else:
         print(f"Unknown command: {cmd}\n")
         print(HELP)
