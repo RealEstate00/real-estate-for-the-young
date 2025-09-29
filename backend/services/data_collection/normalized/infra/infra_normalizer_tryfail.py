@@ -95,6 +95,20 @@ class InfraNormalizerRetry:
         # progress.jsonl 파일 경로 설정
         progress_file = output_dir / "progress.jsonl"
         
+        # 실시간 저장을 위한 파일 경로
+        success_file = output_dir / "retry_success.jsonl"
+        failed_file = output_dir / "retry_failed.jsonl"
+        
+        # 실시간 저장 파일 초기화
+        with open(success_file, 'w', encoding='utf-8') as f:
+            pass  # 빈 파일 생성
+        with open(failed_file, 'w', encoding='utf-8') as f:
+            pass  # 빈 파일 생성
+        
+        # 전체 라인 수 계산 (진행률 표시용)
+        total_lines = sum(1 for _ in open(failed_jsonl_path, 'r', encoding='utf-8'))
+        logger.info(f"총 {total_lines}개 실패 데이터 재처리 시작...")
+        
         # JSONL 파일을 한 줄씩 읽기 (메모리 효율적)
         with open(failed_jsonl_path, 'r', encoding='utf-8') as f:
             for line_num, line in enumerate(f, 1):
@@ -105,7 +119,9 @@ class InfraNormalizerRetry:
                     original_file = failed_data['original_file']
                     row_index = failed_data['original_row_index']
                     
-                    logger.info(f"재처리 [{line_num}]: {failed_data['facility_name']} - {failed_data['address_raw']}")
+                    # 진행률 표시
+                    progress_percent = (line_num / total_lines) * 100
+                    logger.info(f"[{progress_percent:5.1f}%] 재처리 [{line_num}/{total_lines}]: {failed_data['facility_name']}")
                     
                     # 원본 CSV에서 해당 행만 읽기
                     df = pd.read_csv(original_file, skiprows=range(1, row_index+1), nrows=1)
@@ -147,11 +163,26 @@ class InfraNormalizerRetry:
                             address_info
                         )
                         retry_facilities.append(facility_data)
-                        logger.info(f"✅ 재정규화 성공: {failed_data['facility_name']}")
+                        
+                        # 실시간으로 성공 파일에 저장
+                        with open(success_file, 'a', encoding='utf-8') as sf:
+                            sf.write(json.dumps(facility_data, ensure_ascii=False) + '\n')
+                        
+                        logger.info(f"✅ 재정규화 성공: {failed_data['facility_name']} (성공: {len(retry_facilities)}개)")
                     else:
                         # 여전히 실패
                         retry_failed_addresses.append(failed_data)
-                        logger.warning(f"❌ 재정규화 실패: {failed_data['facility_name']}")
+                        
+                        # 실시간으로 실패 파일에 저장
+                        with open(failed_file, 'a', encoding='utf-8') as ff:
+                            ff.write(json.dumps(failed_data, ensure_ascii=False) + '\n')
+                        
+                        logger.warning(f"❌ 재정규화 실패: {failed_data['facility_name']} (실패: {len(retry_failed_addresses)}개)")
+                    
+                    # 10개마다 중간 통계 출력
+                    if line_num % 10 == 0:
+                        success_rate = (len(retry_facilities) / line_num) * 100
+                        logger.info(f"📊 중간 통계 [{line_num}/{total_lines}]: 성공 {len(retry_facilities)}개, 실패 {len(retry_failed_addresses)}개 (성공률: {success_rate:.1f}%)")
                         
                 except Exception as e:
                     logger.error(f"재처리 중 오류 (라인 {line_num}): {e}")
@@ -175,7 +206,16 @@ class InfraNormalizerRetry:
                     
                     continue
         
-        logger.info(f"재처리 완료: 성공 {len(retry_facilities)}개, 실패 {len(retry_failed_addresses)}개")
+        # 최종 통계
+        final_success_rate = (len(retry_facilities) / total_lines) * 100
+        logger.info("=" * 60)
+        logger.info(f"🎉 재처리 완료!")
+        logger.info(f"📊 최종 통계: 전체 {total_lines}개 중 성공 {len(retry_facilities)}개, 실패 {len(retry_failed_addresses)}개")
+        logger.info(f"📈 성공률: {final_success_rate:.1f}%")
+        logger.info(f"💾 저장된 파일:")
+        logger.info(f"   - 성공: {success_file}")
+        logger.info(f"   - 실패: {failed_file}")
+        logger.info("=" * 60)
         
         return {
             "retry_facilities": retry_facilities,
@@ -333,39 +373,20 @@ class InfraNormalizerRetry:
             }
     
     def save_retry_results(self, output_dir: Path, retry_results: Dict[str, List[Dict]]):
-        """재처리 결과를 기존 파일에 누적 저장"""
+        """재처리 결과 요약 (실시간 저장은 이미 완료됨)"""
         
         output_dir.mkdir(parents=True, exist_ok=True)
         
-        # 1. 성공한 재처리 데이터를 기존 파일에 추가 (append)
-        if retry_results["retry_facilities"]:
-            facilities_file = output_dir / "public_facilities.jsonl"
-            
-            # facility_id를 기존 데이터 기준으로 부여하고 추가
-            success_names = []
-            with open(facilities_file, 'a', encoding='utf-8') as f:  # 'a' = append 모드
-                for facility in retry_results["retry_facilities"]:
-                    # facility_id 재부여
-                    facility['facility_id'] = self._get_next_facility_id(
-                        facility.get('cd', 'fac'), 
-                        output_dir
-                    )
-                    success_names.append(facility['name'])
-                    
-                    # 파일에 추가
-                    f.write(json.dumps(facility, ensure_ascii=False) + '\n')
-            
-            logger.info(f"재처리 성공 데이터 추가: {len(retry_results['retry_facilities'])}개")
-            
-            # 2. 성공한 시설들을 실패 목록에서 제거
-            self._remove_successful_from_failed(output_dir, success_names)
-            logger.info(f"실패 목록에서 성공한 {len(success_names)}개 제거")
+        # 실시간 저장이 이미 완료되었으므로 요약만 출력
+        success_file = output_dir / "retry_success.jsonl"
+        retry_failed_file = output_dir / "retry_failed.jsonl"
         
-        # 3. 여전히 실패한 데이터는 그대로 유지 (별도 처리 없음)
-        if retry_results["retry_failed_addresses"]:
-            logger.info(f"여전히 실패한 데이터: {len(retry_results['retry_failed_addresses'])}개 (기존 파일에 유지)")
+        logger.info("=" * 60)
+        logger.info("💾 실시간 저장 완료!")
+        logger.info(f"✅ 성공 데이터: {len(retry_results['retry_facilities'])}개 -> {success_file}")
+        logger.info(f"❌ 실패 데이터: {len(retry_results['retry_failed_addresses'])}개 -> {retry_failed_file}")
         
-        # 4. 최종 요약을 progress.jsonl에 기록
+        # 최종 요약을 progress.jsonl에 기록
         total_processed = len(retry_results["retry_facilities"]) + len(retry_results["retry_failed_addresses"])
         success_rate = (len(retry_results["retry_facilities"]) / total_processed * 100) if total_processed > 0 else 0
         
@@ -383,7 +404,8 @@ class InfraNormalizerRetry:
         with open(progress_file, 'a', encoding='utf-8') as pf:
             pf.write(json.dumps(summary_progress_data, ensure_ascii=False) + '\n')
         
-        logger.info(f"📊 재처리 요약: 전체 {total_processed}개 중 성공 {len(retry_results['retry_facilities'])}개 ({success_rate:.1f}%)")
+        logger.info(f"📊 최종 요약: 전체 {total_processed}개 중 성공 {len(retry_results['retry_facilities'])}개 ({success_rate:.1f}%)")
+        logger.info("=" * 60)
 
 # 예시 사용법
 if __name__ == "__main__":

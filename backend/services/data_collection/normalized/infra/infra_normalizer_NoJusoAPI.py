@@ -918,6 +918,60 @@ class InfraNormalizer:
         
         return last_progress
 
+    def get_resume_point(self, output_dir: Path, facility_type: str) -> int:
+        """중단된 지점부터 재개할 라인 번호 반환 (자동 감지)"""
+        progress_file = output_dir / "progress.jsonl"
+        
+        if not progress_file.exists():
+            return 0  # 처음부터 시작
+        
+        # 해당 facility_type의 모든 progress 항목을 수집
+        progress_entries = []
+        with open(progress_file, 'r', encoding='utf-8') as f:
+            for line in f:
+                if line.strip():
+                    progress_data = json.loads(line.strip())
+                    if progress_data.get('facility_type') == facility_type:
+                        progress_entries.append(progress_data)
+        
+        if not progress_entries:
+            return 0  # 처음부터 시작
+        
+        # 가장 큰 row_index를 찾아서 +1 반환
+        max_row_index = max(entry.get('row_index', 0) for entry in progress_entries)
+        resume_point = max_row_index + 1
+        
+        logger.info(f"📊 {facility_type} 재개 지점 자동 감지: {resume_point}행 (마지막 처리: {max_row_index}행)")
+        
+        return resume_point
+
+    def find_latest_csv_file(self, directory: Path, pattern: str) -> Optional[Path]:
+        """디렉토리에서 패턴에 맞는 가장 최신 CSV 파일 찾기"""
+        if not directory.exists():
+            return None
+        
+        # 패턴에 맞는 모든 CSV 파일 찾기
+        matching_files = []
+        for file_path in directory.glob("*.csv"):
+            if pattern in file_path.name:
+                matching_files.append(file_path)
+        
+        if not matching_files:
+            return None
+        
+        # 파일명에서 날짜 추출하여 정렬
+        def extract_date(file_path: Path) -> str:
+            # 파일명에서 날짜 패턴 추출 (예: 20250928)
+            import re
+            date_match = re.search(r'(\d{8})', file_path.name)
+            return date_match.group(1) if date_match else "00000000"
+        
+        # 날짜 기준으로 정렬하여 가장 최신 파일 반환
+        latest_file = max(matching_files, key=extract_date)
+        logger.info(f"📁 최신 파일 자동 감지: {latest_file.name}")
+        
+        return latest_file
+
     def resume_from_progress(self, output_dir: Path) -> bool:
         """진행 상황에서 재시작"""
         last_progress = self.get_last_progress(output_dir)
@@ -1755,51 +1809,48 @@ class InfraNormalizer:
 
         # 어린이집 데이터 - 진행 상황 확인 후 재개
         childcare_file = openseoul_dir / "seoul_ChildCareInfo_20250928.csv"
-        childcare_progress = self.get_dataset_last_progress(output_dir, 'childCare') if output_dir else None
-        childcare_start_row = (childcare_progress['row_index'] + 1) if childcare_progress else 0
+        childcare_start_row = self.get_resume_point(output_dir, 'childCare') if output_dir else 0
         if childcare_start_row > 0:
             logger.info(f"어린이집 데이터 재개: {childcare_start_row}행부터 시작")
         self._normalize_childcare_centers(childcare_file, childcare_start_row)
         
         # 유치원 데이터 - 진행 상황 확인 후 재개
         kindergarten_file = openseoul_dir / "seoul_childSchoolInfo_20250919.csv"
-        kindergarten_progress = self.get_dataset_last_progress(output_dir, 'childSchool') if output_dir else None
-        kindergarten_start_row = (kindergarten_progress['row_index'] + 1) if kindergarten_progress else 0
+        kindergarten_start_row = self.get_resume_point(output_dir, 'childSchool') if output_dir else 0
         if kindergarten_start_row > 0:
             logger.info(f"유치원 데이터 재개: {kindergarten_start_row}행부터 시작")
         self._normalize_kindergartens(kindergarten_file, kindergarten_start_row)
         
         # 학교 데이터 (초중고) - 진행 상황 확인 후 재개
         school_file = openseoul_dir / "seoul_neisSchoolInfo_20250928.csv"
-        school_progress = self.get_dataset_last_progress(output_dir, 'school') if output_dir else None
-        school_start_row = (school_progress['row_index'] + 1) if school_progress else 0
+        school_start_row = self.get_resume_point(output_dir, 'school') if output_dir else 0
         if school_start_row > 0:
             logger.info(f"학교 데이터 재개: {school_start_row}행부터 시작")
         self._normalize_schools(school_file, school_start_row)
         
         # # 대학 데이터 - 진행 상황 확인 후 재개
         college_file = openseoul_dir / "seoul_SebcCollegeInfoKor_20250919.csv"
-        college_progress = self.get_dataset_last_progress(output_dir, 'college') if output_dir else None
-        college_start_row = (college_progress['row_index'] + 1) if college_progress else 0
+        college_start_row = self.get_resume_point(output_dir, 'college') if output_dir else 0
         if college_start_row > 0:
             logger.info(f"대학 데이터 재개: {college_start_row}행부터 시작")
         self._normalize_colleges(college_file, college_start_row)
         
         # 공원 데이터 - 진행 상황 확인 후 재개
         park_file = openseoul_dir / "seoul_SearchParkInfoService_20250919.csv"
-        park_progress = self.get_dataset_last_progress(output_dir, 'park') if output_dir else None
-        park_start_row = (park_progress['row_index'] + 1) if park_progress else 0
+        park_start_row = self.get_resume_point(output_dir, 'park') if output_dir else 0
         if park_start_row > 0:
             logger.info(f"공원 데이터 재개: {park_start_row}행부터 시작")
         self._normalize_parks(park_file, park_start_row)
         
         # 약국 데이터 - 진행 상황 확인 후 재개
-        pharmacy_file = openseoul_dir / "seoul_TbPharmacyOperateInfo_20250919.csv"
-        pharmacy_progress = self.get_dataset_last_progress(output_dir, 'pharmacy') if output_dir else None
-        pharmacy_start_row = (pharmacy_progress['row_index'] + 1) if pharmacy_progress else 0
-        if pharmacy_start_row > 0:
-            logger.info(f"약국 데이터 재개: {pharmacy_start_row}행부터 시작")
-        self._normalize_pharmacies(pharmacy_file, pharmacy_start_row)
+        pharmacy_file = self.find_latest_csv_file(openseoul_dir, "seoul_TbPharmacyOperateInfo")
+        if pharmacy_file:
+            pharmacy_start_row = self.get_resume_point(output_dir, 'pharmacy') if output_dir else 0
+            if pharmacy_start_row > 0:
+                logger.info(f"약국 데이터 재개: {pharmacy_start_row}행부터 시작")
+            self._normalize_pharmacies(pharmacy_file, pharmacy_start_row)
+        else:
+            logger.warning("약국 CSV 파일을 찾을 수 없습니다.")
 
         # 지하철역과 버스정류소는 좌표 기반이므로 제외
         subway_file = openseoul_dir / "seoul_subwayStationMaster_20250928.csv"
@@ -1817,8 +1868,7 @@ class InfraNormalizer:
         logger.info(f"체육시설 파일: {sports_file}")
         logger.info(f"체육시설 파일 존재: {sports_file.exists()}")
         if sports_file.exists():
-            sports_progress = self.get_dataset_last_progress(output_dir, 'gym') if output_dir else None
-            sports_start_row = (sports_progress['row_index'] + 1) if sports_progress else 0
+            sports_start_row = self.get_resume_point(output_dir, 'gym') if output_dir else 0
             if sports_start_row > 0:
                 logger.info(f"공공체육시설 데이터 재개: {sports_start_row}행부터 시작")
             self._normalize_sports_facilities(sports_file, sports_start_row)
@@ -1826,8 +1876,7 @@ class InfraNormalizer:
         # 마트 데이터 - 진행 상황 확인 후 재개
         mart_file = localdata_dir / "utf8_서울시 마트.csv"
         if mart_file.exists():
-            mart_progress = self.get_dataset_last_progress(output_dir, 'mt') if output_dir else None
-            mart_start_row = (mart_progress['row_index'] + 1) if mart_progress else 0
+            mart_start_row = self.get_resume_point(output_dir, 'mt') if output_dir else 0
             if mart_start_row > 0:
                 logger.info(f"마트 데이터 재개: {mart_start_row}행부터 시작")
             self._normalize_marts(mart_file, mart_start_row)
@@ -1835,20 +1884,20 @@ class InfraNormalizer:
         # 병원 데이터 - 진행 상황 확인 후 재개
         hospital_file = localdata_dir / "utf8_서울시병원_내과소아과응급의학과.csv"
         if hospital_file.exists():
-            hospital_progress = self.get_dataset_last_progress(output_dir, 'hos') if output_dir else None
-            hospital_start_row = (hospital_progress['row_index'] + 1) if hospital_progress else 0
+            hospital_start_row = self.get_resume_point(output_dir, 'hos') if output_dir else 0
             if hospital_start_row > 0:
                 logger.info(f"병원 데이터 재개: {hospital_start_row}행부터 시작")
             self._normalize_hospitals(hospital_file, hospital_start_row)
         
         # 편의점 데이터 - 진행 상황 확인 후 재개
-        convenience_file = localdata_dir / "utf8_서울시 편의점.csv"
-        if convenience_file.exists():
-            convenience_progress = self.get_dataset_last_progress(output_dir, 'con') if output_dir else None
-            convenience_start_row = (convenience_progress['row_index'] + 1) if convenience_progress else 0
+        convenience_file = self.find_latest_csv_file(localdata_dir, "utf8_서울시 편의점")
+        if convenience_file:
+            convenience_start_row = self.get_resume_point(output_dir, 'convenience') if output_dir else 0
             if convenience_start_row > 0:
                 logger.info(f"편의점 데이터 재개: {convenience_start_row}행부터 시작")
             self._normalize_convenience_stores(convenience_file, convenience_start_row)
+        else:
+            logger.warning("편의점 CSV 파일을 찾을 수 없습니다.")
 
         logger.info(f"총 {len(self.normalized_facilities)}개의 시설 데이터와 {len(self.normalized_subway_stations)}개의 지하철역 데이터 정규화 완료.")
         
