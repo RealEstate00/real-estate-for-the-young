@@ -19,25 +19,35 @@ project_root = Path(__file__).parent.parent.parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 from backend.services.data_collection.normalized.housing.normalizer import DataNormalizer
-from backend.services.data_collection.normalized.housing.db_loader import NormalizedDataLoader
+from backend.services.data_collection.normalized.housing.data_quality_enhancer import DataQualityEnhancer, print_quality_report
+from backend.db.housing.db_loader import NormalizedDataLoader
 from backend.db.db_utils_pg import get_engine
 
-HELP = """data-ingest normalized <command> [args]
+HELP = """data-collection normalized <command> [args]
 
 Commands:
-  process              최근 날짜의 모든 raw 데이터를 정규화
+  process              최근 날짜의 모든 raw 데이터를 정규화 (고급 데이터 품질 개선 포함)
   process --platform <name>  특정 플랫폼만 정규화
   process --date <date>      특정 날짜만 정규화
   process --db              정규화 후 DB에 저장
   process --fresh           기존 정규화 데이터를 삭제하고 새로 생성
+  process --no-enhance      고급 데이터 품질 개선 비활성화
+
+Data Quality Enhancement (기본 활성화):
+  - Units 중복 제거 (notice_id, room_number, floor, area_m2)
+  - 금액 정규화 (만원 단위 누락 수정, 0→NULL, 1970-01-01→NULL)
+  - Building type 코드 매핑 (한글→code_master)
+  - Platform 키 통일 (platform_id→code)
+  - 원본 단위 정보 보관 (deposit_scale, rent_scale 등)
 
 Examples:
-  data-ingest normalized process
-  data-ingest normalized process --platform sohouse
-  data-ingest normalized process --date 2025-09-15
-  data-ingest normalized process --db
-  data-ingest normalized process --fresh
-  data-ingest normalized process --platform cohouse --fresh
+  data-collection normalized process
+  data-collection normalized process --platform sohouse
+  data-collection normalized process --date 2025-09-15
+  data-collection normalized process --db
+  data-collection normalized process --fresh
+  data-collection normalized process --platform cohouse --fresh
+  ddata-collection normalized process --no-enhance
 """
 
 def find_latest_raw_data(platform: str = None, date: str = None) -> List[Path]:
@@ -84,7 +94,7 @@ def find_latest_raw_data(platform: str = None, date: str = None) -> List[Path]:
     return raw_files
 
 def get_normalized_output_path(raw_file: Path) -> Path:
-    """정규화된 데이터 출력 경로 생성: data/normalized/housing/작업진행날짜/플랫폼명/"""
+    """정규화된 데이터 출력 경로 생성: data/normalized/작업진행날짜/플랫폼명/"""
     # housing 경로에서 플랫폼명만 추출
     # 예: data/housing/sohouse/2025-09-15/raw.csv
     path_parts = raw_file.parts
@@ -102,15 +112,15 @@ def get_normalized_output_path(raw_file: Path) -> Path:
     from datetime import datetime
     today = datetime.now().strftime("%Y-%m-%d")
     
-    # backend/data/normalized/housing/작업진행날짜/플랫폼명/ 구조로 생성
+    # backend/data/normalized/작업진행날짜/플랫폼명/ 구조로 생성
     backend_dir = Path(__file__).parent.parent.parent.parent.parent
-    output_path = backend_dir / "data" / "normalized" / "housing" / today / platform_name
+    output_path = backend_dir / "data" / "normalized" / today / platform_name
     output_path.mkdir(parents=True, exist_ok=True)
     
     return output_path
 
-def normalize_data(raw_csv_path: str) -> bool:
-    """raw 데이터를 정규화된 데이터로 변환"""
+def normalize_data(raw_csv_path: str, enhance_quality: bool = True) -> bool:
+    """raw 데이터를 정규화된 데이터로 변환 (고급 데이터 품질 개선 포함)"""
     raw_path = Path(raw_csv_path)
     if not raw_path.exists():
         print(f"❌ 파일을 찾을 수 없습니다: {raw_csv_path}")
@@ -124,33 +134,35 @@ def normalize_data(raw_csv_path: str) -> bool:
         print(f"🔄 정규화 시작: {raw_csv_path}")
         
         normalizer = DataNormalizer()
+        quality_enhancer = DataQualityEnhancer()
+        
+        # 정규화된 데이터를 저장할 딕셔너리
+        normalized_data = {}
         
         # 실시간 저장을 위한 콜백 함수
         def save_progress(table_name: str, data: list):
-            output_file = output_path / f"{table_name}.json"
+            # 데이터 품질 개선 적용
+            if enhance_quality and table_name in ['units', 'notices', 'platforms']:
+                print(f"🔧 {table_name} 고급 데이터 품질 개선 중...")
+                
+                if table_name == 'units':
+                    data = quality_enhancer.enhance_units_data(data)
+                elif table_name == 'notices':
+                    # notices는 platforms와 함께 처리해야 함
+                    normalized_data[table_name] = data
+                    return  # 나중에 platforms와 함께 처리
+                elif table_name == 'platforms':
+                    data = quality_enhancer.enhance_platforms_data(data)
+                    # notices가 이미 정규화되었다면 함께 처리
+                    if 'notices' in normalized_data:
+                        notices = quality_enhancer.enhance_notices_data(normalized_data['notices'], data)
+                        _save_table_data('notices', notices, output_path)
+                        del normalized_data['notices']
             
-            # NaN 값을 null로 변환하는 함수
-            def convert_nan_to_null(obj):
-                if isinstance(obj, dict):
-                    return {k: convert_nan_to_null(v) for k, v in obj.items()}
-                elif isinstance(obj, list):
-                    return [convert_nan_to_null(item) for item in obj]
-                elif pd.isna(obj):
-                    return None
-                elif hasattr(obj, 'isoformat'):  # datetime, Timestamp 등
-                    return obj.isoformat()
-                else:
-                    return obj
-            
-            # 데이터 변환
-            converted_data = convert_nan_to_null(data)
-            
-            with open(output_file, 'w', encoding='utf-8') as f:
-                json.dump(converted_data, f, ensure_ascii=False, indent=2)
-            print(f"✅ {table_name}: {len(data)}개 레코드 저장 → {output_file}")
+            _save_table_data(table_name, data, output_path)
         
         # 정규화 실행 (실시간 저장)
-        normalized_data = normalizer.normalize_raw_data(raw_path, save_callback=save_progress)
+        normalizer.normalize_raw_data(raw_path, save_callback=save_progress)
         
         # codes.json 복사 (공통 파일)
         codes_file = Path("backend/data/normalized/2025-09-28/codes.json")
@@ -159,12 +171,44 @@ def normalize_data(raw_csv_path: str) -> bool:
             shutil.copy(codes_file, output_path / "codes.json")
             print(f"✅ codes.json 복사 완료")
         
+        # 데이터 품질 검증 (정규화된 데이터가 있는 경우에만)
+        if enhance_quality and normalized_data:
+            print(f"🔍 데이터 품질 검증 중...")
+            validation_results = quality_enhancer.validate_data_quality(normalized_data)
+            print_quality_report(validation_results)
+        
         print(f"✅ 정규화 완료: {output_path}")
         return True
         
     except Exception as e:
         print(f"❌ 정규화 실패: {e}")
+        import traceback
+        traceback.print_exc()
         return False
+
+def _save_table_data(table_name: str, data: list, output_path: Path) -> None:
+    """테이블 데이터를 파일로 저장"""
+    output_file = output_path / f"{table_name}.json"
+    
+    # NaN 값을 null로 변환하는 함수
+    def convert_nan_to_null(obj):
+        if isinstance(obj, dict):
+            return {k: convert_nan_to_null(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [convert_nan_to_null(item) for item in obj]
+        elif obj is None or (hasattr(obj, '__str__') and str(obj).lower() in ['nan', 'none']):
+            return None
+        elif hasattr(obj, 'isoformat'):  # datetime, Timestamp 등
+            return obj.isoformat()
+        else:
+            return obj
+    
+    # 데이터 변환
+    converted_data = convert_nan_to_null(data)
+    
+    with open(output_file, 'w', encoding='utf-8') as f:
+        json.dump(converted_data, f, ensure_ascii=False, indent=2)
+    print(f"✅ {table_name}: {len(data)}개 레코드 저장 → {output_file}")
 
 def load_to_db(raw_csv_path: str, db_url: str = None) -> bool:
     """정규화 후 DB에 저장"""
@@ -202,16 +246,16 @@ def load_to_db(raw_csv_path: str, db_url: str = None) -> bool:
 def clean_normalized_data(platform: str = None, date: str = None) -> None:
     """기존 정규화된 데이터 삭제"""
     backend_dir = Path(__file__).parent.parent.parent.parent.parent
-    housing_dir = backend_dir / "data" / "normalized" / "housing"
+    normalized_dir = backend_dir / "backend" / "data" / "normalized"
     
-    if not housing_dir.exists():
-        logging.info("[INFO] Housing normalized data directory not found")
+    if not normalized_dir.exists():
+        logging.info("[INFO] Normalized data directory not found")
         return
     
-    # 날짜별로 검색 (실제 구조: normalized/housing/날짜/플랫폼)
-    date_dirs = [d for d in housing_dir.iterdir() if d.is_dir()]
+    # 날짜별로 검색 (실제 구조: normalized/날짜/플랫폼)
+    date_dirs = [d for d in normalized_dir.iterdir() if d.is_dir()]
     if not date_dirs:
-        logging.info("[INFO] No housing normalized data found")
+        logging.info("[INFO] No normalized data found")
         return
         
     # 날짜별로 정렬 (최신순)
@@ -243,7 +287,7 @@ def clean_normalized_data(platform: str = None, date: str = None) -> None:
             import shutil
             shutil.rmtree(date_dir, ignore_errors=True)
 
-def process_latest_data(platform: str = None, date: str = None, save_to_db: bool = False, fresh: bool = False) -> bool:
+def process_latest_data(platform: str = None, date: str = None, save_to_db: bool = False, fresh: bool = False, enhance_quality: bool = True) -> bool:
     """최근 날짜의 모든 raw 데이터를 정규화"""
     if fresh:
         print(f"🧹 Fresh 모드: 기존 정규화 데이터 삭제 중...")
@@ -266,7 +310,7 @@ def process_latest_data(platform: str = None, date: str = None, save_to_db: bool
         print(f"\n🔄 처리 중: {raw_file}")
         
         # 정규화
-        if normalize_data(str(raw_file)):
+        if normalize_data(str(raw_file), enhance_quality):
             success_count += 1
             print(f"✅ 정규화 완료: {raw_file}")
             
@@ -299,6 +343,7 @@ def main():
     parser.add_argument("--db", action="store_true", help="정규화 후 DB에 저장")
     parser.add_argument("--db-url", help="데이터베이스 URL")
     parser.add_argument("--fresh", action="store_true", help="기존 정규화 데이터를 삭제하고 새로 생성")
+    parser.add_argument("--no-enhance", action="store_true", help="고급 데이터 품질 개선 비활성화")
     parser.add_argument("--verbose", "-v", action="store_true", help="상세 로그 출력")
     
     args = parser.parse_args()
@@ -309,7 +354,8 @@ def main():
     
     # 명령어 실행
     if args.command == "process":
-        success = process_latest_data(args.platform, args.date, args.db, args.fresh)
+        enhance_quality = not args.no_enhance
+        success = process_latest_data(args.platform, args.date, args.db, args.fresh, enhance_quality)
     
     sys.exit(0 if success else 1)
 

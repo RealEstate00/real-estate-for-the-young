@@ -20,7 +20,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # TODO: 주소 API 서버 문제로 임시 주석처리 - 추후 활성화 예정
-# from backend.services.ingestion.normalized.housing.address_api import normalize_address, AddressNormalizerError
+# from backend.services.data_collection.normalized.housing.address_api import normalize_address, AddressNormalizerError
 
 logger = logging.getLogger(__name__)
 
@@ -180,29 +180,39 @@ class DataNormalizer:
     # 2-2) 주소 정규화 관련 (임시 주석처리 - API 서버 문제)
     # ===========================================
     
-    # TODO: 주소 API 서버 문제로 임시 주석처리 - 추후 활성화 예정
-    # def _normalize_address_from_raw(self, address_raw: str, notice_id: str) -> Optional[int]:
-    #     """raw.csv에서 추출한 주소를 JUSO API로 정규화"""
-    #     logger.info(f"raw.csv에서 추출한 주소: '{address_raw}'")
-    #     if not address_raw:
-    #         logger.info("주소가 비어있음")
-    #         return None
-    #     address_raw = preprocess_address(address_raw)
-    #     if address_raw in self.address_id_map:
-    #         return self.address_id_map[address_raw]
-    #     try:
-    #         normalized = normalize_address(address_raw)
-    #         if not normalized:
-    #             logger.warning(f"주소 정규화 실패: {address_raw}")
-    #             return None
-    #         return self._normalize_address_with_juso({
-    #             'address_raw': address_raw,
-    #             'notice_id': notice_id,
-    #             'normalized': normalized
-    #         })
-    #     except Exception as e:
-    #         logger.error(f"주소 정규화 API 오류: {e}")
-    #         return None
+    def _normalize_address_from_raw(self, address_raw: str, notice_id: str) -> Optional[str]:
+        """raw.csv에서 추출한 주소를 정규화 (고유한 address_id 생성)"""
+        if not address_raw:
+            return None
+        
+        # 중복 체크
+        if address_raw in self.address_id_map:
+            return self.address_id_map[address_raw]
+        
+        # 고유한 address_id 생성
+        import hashlib
+        address_id = hashlib.md5(address_raw.encode('utf-8')).hexdigest()[:16]
+        
+        # 주소 정보 구성 (간단한 형태)
+        address_info = {
+            'address_id': address_id,
+            'address_raw': address_raw,
+            'ctpv_nm': None,
+            'sgg_nm': None,
+            'emd_nm': None,
+            'emd_cd': None,
+            'building_name': None,
+            'road_name_full': None,
+            'jibun_name_full': None,
+            'latitude': None,
+            'longitude': None
+        }
+        
+        self.addresses.append(address_info)
+        self.address_id_map[address_raw] = address_id
+        
+        logger.info(f"주소 정규화 완료: {address_raw} -> ID {address_id}")
+        return address_id
     
     # TODO: 주소 API 서버 문제로 임시 주석처리 - 추후 활성화 예정
     # def _normalize_address_with_juso(self, address_data: Dict) -> int:
@@ -215,13 +225,15 @@ class DataNormalizer:
     #     dedup_key = dedup_key.lower().strip()
     #     
     #     if dedup_key in self.addresses:
-    #         return self.addresses[dedup_key]['id']
+    #         return self.addresses[dedup_key]['address_id']
     #     
-    #     address_id = len(self.addresses) + 1
+    #     # 고유한 address_id 생성 (주소 원본 텍스트의 MD5 해시값)
+    #     import hashlib
+    #     address_id = hashlib.md5(address_raw.encode('utf-8')).hexdigest()[:16]
     #     
     #     # 주소 정규화 데이터 구성 (vworld API 결과 사용)
     #     address_info = {
-    #         'id': address_id,
+    #         'address_id': address_id,
     #         'address_raw': address_raw,
     #         'ctpv_nm': normalized.get('ctpv_nm', ''),  # 시도명
     #         'sgg_nm': normalized.get('sgg_nm', ''),    # 시군구명
@@ -260,12 +272,12 @@ class DataNormalizer:
     # 2-4) 공고 정규화 관련
     # ===========================================
 
-    def _normalize_notice_with_raw(self, row: pd.Series, address_id: Optional[int], record: Dict) -> int:
+    def _normalize_notice_with_raw(self, row: pd.Series, address_id: Optional[int], record: Dict) -> str:
         """raw 데이터를 사용한 공고 정규화"""
-        notice_id = len(self.notices) + 1
+        notice_id = row.get('notice_id', '')  # 실제 notice_id 사용
         
-        # 플랫폼 ID 결정
-        platform_id = 2 if 'sohouse' in str(row.get('notice_id', '')) else 1
+        # 플랫폼 ID 결정 (문자열 코드 사용) - 통일된 코드 사용
+        platform_id = 'sohouse' if 'sohouse' in str(row.get('notice_id', '')) else 'cohouse'
         
         # KV JSON 데이터 로드
         kv_data = self._load_kv_data(record.get('kv_json_path', ''))
@@ -285,15 +297,19 @@ class DataNormalizer:
         # building_type은 raw.csv에서 직접 가져오기
         final_building_type = row.get('building_type', 'unknown')
         
+        # 고유한 address_id 생성
+        import hashlib
+        address_raw = record.get('address', '')
+        unique_address_id = hashlib.md5(address_raw.encode('utf-8')).hexdigest()[:16] if address_raw else None
+        
         # 공고 정보 구성 
         notice_data = {
-            'id': notice_id,
+            'notice_id': row.get('notice_id', ''), 
             'platform_id': platform_id,
-            'source_key': row.get('notice_id', ''),
             'title': record.get('house_name', '') or record.get('building_details', {}).get('address', ''),
             'status': 'open',
-            'address_raw': record.get('address', ''),
-            'address_id': address_id,
+            'address_raw': address_raw,
+            'address_id': unique_address_id,  # 고유한 address_id 사용
             'building_type': final_building_type,
             'notice_extra': {
                 'image_paths': image_paths,
@@ -315,7 +331,7 @@ class DataNormalizer:
         self.notices.append(notice_data)
         return notice_id
     
-    def _normalize_tags(self, row: pd.Series, notice_id: int):
+    def _normalize_tags(self, row: pd.Series, notice_id: str):
         """태그 정규화"""
         tags = normalize_tags(row, notice_id)
         self.notice_tags.extend(tags)
@@ -390,9 +406,8 @@ class DataNormalizer:
                 room_number = None
             
             unit_data = {
-                'id': unit_id,
+                'unit_id': unit_row.get('space_id', f'unit_{unit_id}'),
                 'notice_id': notice_id,
-                'unit_code': unit_row.get('space_id', f'unit_{unit_id}'),
                 'unit_type': raw_unit_type, 
                 'deposit': deposit,
                 'rent': rent,
@@ -410,7 +425,7 @@ class DataNormalizer:
             # unit_features에 추가 (room_count, bathroom_count, direction)
             unit_type = raw_unit_type  # raw CSV에서 가져온 unit_type 사용
             unit_features = {
-                'unit_id': unit_id,
+                'unit_id': unit_row.get('space_id', f'unit_{unit_id}'),  # unit_code를 unit_id로 사용
                 'room_count': self._extract_room_count(unit_type),
                 'bathroom_count': None,  # occupancy 데이터에는 없음
                 'direction': None
@@ -684,28 +699,30 @@ class DataNormalizer:
     # 2-8) 기타 유틸리티
     # ===========================================
     
-    def _normalize_platform(self, row: pd.Series) -> int:
-        """플랫폼 정규화"""
+    def _normalize_platform(self, row: pd.Series) -> str:
+        """플랫폼 정규화 (문자열 코드 반환)"""
         platform_code = row.get('platform', 'unknown')
         platform_name = self._get_platform_name(platform_code)
         platform_url = self._get_platform_url(platform_code)
         
+        # 코드마스터와 호환되는 코드로 변환
+        code_master_code = f'platform_{platform_code}'
+        
         # 중복 체크
         for platform in self.platforms:
             if platform['code'] == platform_code:
-                return platform['id']
+                return platform['code']  # code 반환
         
-        platform_id = len(self.platforms) + 1
         platform_data = {
-            'id': platform_id,
             'code': platform_code,
             'name': platform_name,
             'url': platform_url,
-            'is_active': True
+            'is_active': True,
+            'platform_code': code_master_code  # 코드마스터 코드 추가
         }
         
         self.platforms.append(platform_data)
-        return platform_id
+        return platform_code
 
     def _update_notice_ranges(self, notice_id: int, units: List[Dict]):
         """공고의 범위 정보 업데이트 (유닛 데이터 기반)"""
@@ -730,11 +747,8 @@ class DataNormalizer:
         
         # 공고 데이터 업데이트
         for notice in self.notices:
-            if notice['id'] == notice_id:
-                notice['area_min_m2'] = area_min
-                notice['area_max_m2'] = area_max
-                notice['floor_min'] = floor_min
-                notice['floor_max'] = floor_max
+            if notice['notice_id'] == notice_id:
+                # min/max 필드는 제거되었으므로 업데이트하지 않음
                 break
 
     def _get_platform_name(self, code: str) -> str:
@@ -743,6 +757,7 @@ class DataNormalizer:
             'cohouse': '서울시 공동체주택',
             'sohouse': '서울시 사회주택',
             'lh': 'LH공사',
+            'sh': 'SH공사',
             'youth': '청년안심주택'
         }
         return platform_names.get(code, code)
@@ -753,6 +768,7 @@ class DataNormalizer:
             'cohouse': 'https://soco.seoul.go.kr/coHouse',
             'sohouse': 'https://soco.seoul.go.kr/soHouse',
             'lh': 'https://www.lh.or.kr',
+            'sh': 'https://www.sh.co.kr',
             'youth': 'https://soco.seoul.go.kr/youth'
         }
         return platform_urls.get(code, '')
@@ -762,8 +778,8 @@ class DataNormalizer:
 # 3) 태그 정규화 함수들
 # ===========================================
 
-def normalize_tags(row: pd.Series, notice_id: int) -> List[Dict]:
-    """태그 데이터 정규화"""
+def normalize_tags(row: pd.Series, notice_id: str) -> List[Dict]:
+    """태그 데이터 정규화 (notice_id, tag, description 구조)"""
     tags = []
     
     # 테마를 태그로 추가
@@ -771,7 +787,8 @@ def normalize_tags(row: pd.Series, notice_id: int) -> List[Dict]:
     if theme and theme != 'nan':
         tags.append({
             'notice_id': notice_id,
-            'tag': theme
+            'tag': '테마',
+            'description': theme
         })
     
     # 지하철역을 태그로 추가
@@ -779,7 +796,8 @@ def normalize_tags(row: pd.Series, notice_id: int) -> List[Dict]:
     if subway and subway != 'nan':
         tags.append({
             'notice_id': notice_id,
-            'tag': f"지하철:{subway}"
+            'tag': '지하철',
+            'description': subway
         })
     
     # 자격요건을 태그로 추가
@@ -787,13 +805,14 @@ def normalize_tags(row: pd.Series, notice_id: int) -> List[Dict]:
     if eligibility and eligibility != 'nan':
         tags.append({
             'notice_id': notice_id,
-            'tag': f"자격요건:{eligibility}"
+            'tag': '자격요건',
+            'description': eligibility
         })
     
     return tags
 
-def normalize_facilities_tags(record: Dict, notice_id: int) -> List[Dict]:
-    """KV/JSON 파일의 시설 정보를 태그로 정규화"""
+def normalize_facilities_tags(record: Dict, notice_id: str) -> List[Dict]:
+    """KV/JSON 파일의 시설 정보를 태그로 정규화 (notice_id, tag, description 구조)"""
     tags = []
     added_tags = set()  # 중복 방지를 위한 집합
     
@@ -823,15 +842,17 @@ def normalize_facilities_tags(record: Dict, notice_id: int) -> List[Dict]:
             }
             
             tag_key = key_mapping.get(key, key)
-            tag_content = f"{tag_key}:{value}"
+            tag_value = str(value).strip()
             
-            # 중복 체크
-            if tag_content not in added_tags:
+            # 중복 체크 (tag + description 조합)
+            tag_combination = f"{tag_key}:{tag_value}"
+            if tag_combination not in added_tags:
                 tags.append({
                     'notice_id': notice_id,
-                    'tag': tag_content
+                    'tag': tag_key,
+                    'description': tag_value
                 })
-                added_tags.add(tag_content)
+                added_tags.add(tag_combination)
     
     logger.info(f"[DEBUG] normalize_facilities_tags: notice_id={notice_id}, 생성된 태그 수={len(tags)}")
     return tags
