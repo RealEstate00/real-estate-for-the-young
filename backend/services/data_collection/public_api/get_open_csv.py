@@ -23,15 +23,15 @@ if not API_KEY:
 
 # 📋 다운로드할 서비스 목록
 SERVICES = [
-    "busStopLocationXyInfo",      # 버스정류장 위치정보
-    "subwayStationMaster",        # 지하철역 마스터정보
-    "ChildCareInfo",              # 어린이집 정보
-    "childSchoolInfo",            # 유치원 정보
+    # "busStopLocationXyInfo",      # 버스정류장 위치정보
+    # "subwayStationMaster",        # 지하철역 마스터정보
+    # "ChildCareInfo",              # 어린이집 정보
+    # "childSchoolInfo",            # 유치원 정보
     "neisSchoolInfo",             # 초중고등학교 정보
-    "SearchParkInfoService",      # 공원 정보
-    "SearchSTNBySubwayLineInfo",  # 지하철역 정보
-    "SebcCollegeInfoKor",         # 대학교 정보
-    "StationAdresTelno",          # 지하철역 주소/전화번호
+    # "SearchParkInfoService",      # 공원 정보
+    # "SearchSTNBySubwayLineInfo",  # 지하철역 정보
+    # "SebcCollegeInfoKor",         # 대학교 정보
+    # "StationAdresTelno",          # 지하철역 주소/전화번호
     "TbPharmacyOperateInfo"       # 약국 운영정보
 ]
 

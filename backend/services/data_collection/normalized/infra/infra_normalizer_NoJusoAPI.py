@@ -351,8 +351,10 @@ def preprocess_address(addr_raw: str) -> str:
     # 2-1. 구체적 건물명 패턴 제거 (층수 정보 제거 전에 적용) - 상세 번지는 보존
     # 도로명+번지 이후의 건물명만 제거 (상세 번지 정보는 보존)
     # 예: "한강로2가 112-3 용산파크자이" -> "한강로2가 112-3"
-    # 한글+숫자+가 패턴과 상세 번지 이후의 건물명 제거
-    addr_raw = re.sub(r'([가-힣]+로\d*[가-힣]*가\s+\d+[-\d]*)\s+[가-힣A-Z]+(?:빌|타워|센터|마트|몰|아파트|오피스|자이|파크|힐스|위브|푸르지오).*$', r'\1', addr_raw)
+    # 한글+숫자+가 패턴과 상세 번지 이후의 건물명 제거 (부지번 보존)
+    # 주의: 부지번이 있는 경우는 건물명만 제거하고 부지번은 보존
+    # 이 패턴은 새로운 규칙에서 처리하므로 주석 처리
+    # addr_raw = re.sub(r'([가-힣]+로\d*[가-힣]*가\s+\d+[-\d]*)\s+[가-힣A-Z]{3,}(?:빌|타워|센터|마트|몰|아파트|오피스|자이|파크|힐스|위브|푸르지오).*$', r'\1', addr_raw)
     addr_raw = re.sub(r'([가-힣]+길\s+\d+[-\d]*)\s+[가-힣A-Z]+(?:빌|타워|센터|마트|몰|아파트|오피스|자이|파크|힐스|위브|푸르지오).*$', r'\1', addr_raw)
     addr_raw = re.sub(r'([가-힣]+로\s+\d+[-\d]*)\s+[가-힣A-Z]+(?:빌|타워|센터|마트|몰|아파트|오피스|자이|파크|힐스|위브|푸르지오).*$', r'\1', addr_raw)
     
@@ -409,7 +411,9 @@ def preprocess_address(addr_raw: str) -> str:
     # 6. 지번주소 정리 (~동 숫자 또는 ~동 숫자-숫자 뒤의 모든 문자 제거)
     # 예: "서울 종로구 동숭동 192-6 1" -> "서울 종로구 동숭동 192-6"
     # 예: "서울 광진구 능동 25 선화예술중고등학교" -> "서울 광진구 능동 25"
-    addr_raw = re.sub(r'([가-힣]+동\s+\d+[-\d]*)\s+.*$', r'\1', addr_raw)
+    # 주의: 부지번이 있는 경우는 제외 (예: 성수동1가 685-20)
+    # 이 패턴은 새로운 규칙에서 처리하므로 주석 처리
+    # addr_raw = re.sub(r'([가-힣]+동\s+\d+)\s+[가-힣].*$', r'\1', addr_raw)  # 부지번 없는 경우만
     
     # 새로 추가: 도로명+번지 이후의 건물명 제거 강화
     # 도로명길+숫자 이후 모든 한글 제거
@@ -642,6 +646,45 @@ def preprocess_address(addr_raw: str) -> str:
     # 4. 공백 정리
     addr = re.sub(r'\s+', ' ', addr).strip()
 
+    # 5. 새로운 전처리 규칙들 추가
+    
+    # 5-1. '*로n가' 패턴에서 띄어쓰기 제거 (동이름이므로 띄어쓰면 안됨)
+    # 예: "을지로 6가" -> "을지로6가"
+    addr = re.sub(r'([가-힣]+로)\s+(\d+가)', r'\1\2', addr)
+    
+    # 5-2. 지번주소에서 지번-부지번 뒤의 모든 한글 제거
+    # 예: "성수동1가 685-20 서울숲 관리사무소" -> "성수동1가 685-20"
+    # 예: "가양동 56-2번지 강서오토플랙스 자동차매매센터 102호" -> "가양동 56-2"
+    # 예: "하왕십리동 998번지 왕십리KCC스위첸" -> "하왕십리동 998"
+    # 예: "북아현동 136-21번지 이편한세상신촌 119호" -> "북아현동 136-21"
+    # 예: "신사동 162-16번지 .17" -> "신사동 162-16"
+    
+    # 지번-부지번 패턴 뒤의 모든 한글 제거 (번지 포함)
+    # 주의: 부지번이 있는 경우는 제외 (예: 성수동1가 685-20)
+    # 이 패턴은 새로운 규칙에서 처리하므로 주석 처리
+    # addr = re.sub(r'([가-힣]+동\s+\d+[-\d]*)\s*번지.*$', r'\1', addr)
+    
+    # 지번-부지번 패턴 뒤의 모든 한글 제거 (번지 없이, 2글자 이상의 한글만)
+    # 주의: 부지번이 있는 경우는 제외 (예: 성수동1가 685-20)
+    # 이 패턴은 새로운 규칙에서 처리하므로 주석 처리
+    # addr = re.sub(r'([가-힣]+동\s+\d+[-\d]*)\s+[가-힣]{2,}.*$', r'\1', addr)
+    
+    # 5-3. 동이름 뒤의 숫자(지번)는 보존하고 그 뒤의 한글만 제거
+    # 예: "한강로1가 64 대우 월드마크 용산" -> "한강로1가 64"
+    # 예: "한강로3가 40-999 용산역" -> "한강로3가 40-999"
+    # 한글+로+숫자+가 패턴에서 지번 뒤의 한글 제거
+    # 주의: 부지번이 있는 경우는 제외 (예: 한강로2가 112-3)
+    # 이 패턴은 새로운 규칙에서 처리하므로 주석 처리
+    # addr = re.sub(r'([가-힣]+로\d+가\s+\d+[-\d]*)\s+[가-힣]{2,}.*$', r'\1', addr)
+    
+    # 5-4. 마침표와 점 제거
+    # 예: "신사동 162-16번지 .17" -> "신사동 162-16"
+    addr = re.sub(r'\.\d+.*$', '', addr)
+    addr = re.sub(r'\s*\.\s*.*$', '', addr)
+    
+    # 5-5. 최종 공백 정리
+    addr = re.sub(r'\s+', ' ', addr).strip()
+
     return addr
 
 class InfraNormalizer:
@@ -858,6 +901,77 @@ class InfraNormalizer:
         
         return last_progress
 
+    def get_dataset_last_progress(self, output_dir: Path, facility_type: str) -> Optional[Dict]:
+        """특정 데이터셋의 마지막 진행 상황 조회"""
+        progress_file = output_dir / "progress.jsonl"
+        
+        if not progress_file.exists():
+            return None
+        
+        last_progress = None
+        with open(progress_file, 'r', encoding='utf-8') as f:
+            for line in f:
+                if line.strip():
+                    progress_data = json.loads(line.strip())
+                    if progress_data.get('facility_type') == facility_type:
+                        last_progress = progress_data
+        
+        return last_progress
+
+    def get_resume_point(self, output_dir: Path, facility_type: str) -> int:
+        """중단된 지점부터 재개할 라인 번호 반환 (자동 감지)"""
+        progress_file = output_dir / "progress.jsonl"
+        
+        if not progress_file.exists():
+            return 0  # 처음부터 시작
+        
+        # 해당 facility_type의 모든 progress 항목을 수집
+        progress_entries = []
+        with open(progress_file, 'r', encoding='utf-8') as f:
+            for line in f:
+                if line.strip():
+                    progress_data = json.loads(line.strip())
+                    if progress_data.get('facility_type') == facility_type:
+                        progress_entries.append(progress_data)
+        
+        if not progress_entries:
+            return 0  # 처음부터 시작
+        
+        # 가장 큰 row_index를 찾아서 +1 반환
+        max_row_index = max(entry.get('row_index', 0) for entry in progress_entries)
+        resume_point = max_row_index + 1
+        
+        logger.info(f"📊 {facility_type} 재개 지점 자동 감지: {resume_point}행 (마지막 처리: {max_row_index}행)")
+        
+        return resume_point
+
+    def find_latest_csv_file(self, directory: Path, pattern: str) -> Optional[Path]:
+        """디렉토리에서 패턴에 맞는 가장 최신 CSV 파일 찾기"""
+        if not directory.exists():
+            return None
+        
+        # 패턴에 맞는 모든 CSV 파일 찾기
+        matching_files = []
+        for file_path in directory.glob("*.csv"):
+            if pattern in file_path.name:
+                matching_files.append(file_path)
+        
+        if not matching_files:
+            return None
+        
+        # 파일명에서 날짜 추출하여 정렬
+        def extract_date(file_path: Path) -> str:
+            # 파일명에서 날짜 패턴 추출 (예: 20250928)
+            import re
+            date_match = re.search(r'(\d{8})', file_path.name)
+            return date_match.group(1) if date_match else "00000000"
+        
+        # 날짜 기준으로 정렬하여 가장 최신 파일 반환
+        latest_file = max(matching_files, key=extract_date)
+        logger.info(f"📁 최신 파일 자동 감지: {latest_file.name}")
+        
+        return latest_file
+
     def resume_from_progress(self, output_dir: Path) -> bool:
         """진행 상황에서 재시작"""
         last_progress = self.get_last_progress(output_dir)
@@ -999,27 +1113,28 @@ class InfraNormalizer:
             else:
                 logger.info("bus_stops.jsonl이 비어있어서 JSON 파일을 생성하지 않습니다.")
         
-        # 4. failed_addresses.jsonl → failed_addresses.json
-        failed_file = output_dir / "failed_addresses.jsonl"
-        if failed_file.exists():
-            failed_addresses = []
-            with open(failed_file, 'r', encoding='utf-8') as f:
-                for line in f:
-                    if line.strip():
-                        failed_addresses.append(json.loads(line.strip()))
-            
-            failed_data = {
-                "failed_addresses": failed_addresses,
-                "metadata": {
-                    "normalized_at": datetime.now().isoformat(),
-                    "failed_addresses_count": len(failed_addresses)
-                }
-            }
-            
-            output_file = output_dir / "failed_addresses.json"
-            with open(output_file, 'w', encoding='utf-8') as f:
-                json.dump(failed_data, f, ensure_ascii=False, indent=2)
-            logger.info(f"failed_addresses.json 생성: {len(failed_addresses)}개")
+        # 4. failed_addresses.jsonl → failed_addresses.json (비활성화)
+        # JSONL 파일만 사용하므로 JSON 파일 생성하지 않음
+        # failed_file = output_dir / "failed_addresses.jsonl"
+        # if failed_file.exists():
+        #     failed_addresses = []
+        #     with open(failed_file, 'r', encoding='utf-8') as f:
+        #         for line in f:
+        #             if line.strip():
+        #                 failed_addresses.append(json.loads(line.strip()))
+        #     
+        #     failed_data = {
+        #         "failed_addresses": failed_addresses,
+        #         "metadata": {
+        #             "normalized_at": datetime.now().isoformat(),
+        #             "failed_addresses_count": len(failed_addresses)
+        #         }
+        #     }
+        #     
+        #     output_file = output_dir / "failed_addresses.json"
+        #     with open(output_file, 'w', encoding='utf-8') as f:
+        #         json.dump(failed_data, f, ensure_ascii=False, indent=2)
+        #     logger.info(f"failed_addresses.json 생성: {len(failed_addresses)}개")
         
         logger.info("JSONL → JSON 변환 완료!")
 
@@ -1152,14 +1267,20 @@ class InfraNormalizer:
 
     # JUSO API 대신 좌표 API만 사용하므로 파싱 함수들은 제거
 
-    def _normalize_childcare_centers(self, file_path: Path):
+    def _normalize_childcare_centers(self, file_path: Path, start_row: int = 0):
         """어린이집 데이터 정규화"""
         if not file_path.exists():
             logger.warning(f"어린이집 파일이 존재하지 않습니다: {file_path}")
             return
 
         df = read_csv_with_auto_encoding(file_path)
-        logger.info(f"어린이집 데이터 정규화 시작: {len(df)}개")
+        
+        # 시작 행 설정
+        if start_row > 0:
+            logger.info(f"어린이집 데이터 정규화 재개: {start_row}행부터 시작, 총 {len(df)}개 중 {len(df) - start_row}개 남음")
+            df = df.iloc[start_row:]
+        else:
+            logger.info(f"어린이집 데이터 정규화 시작: {len(df)}개")
 
         for idx, row in df.iterrows():
             address_raw = str(row.get('CRADDR', ''))
@@ -1209,14 +1330,20 @@ class InfraNormalizer:
                 self.normalized_facilities.append(facility_data)
         logger.info(f"어린이집 데이터 정규화 완료: {len(self.normalized_facilities)}개")
 
-    def _normalize_schools(self, file_path: Path):
+    def _normalize_schools(self, file_path: Path, start_row: int = 0):
         """학교 데이터 정규화"""
         if not file_path.exists():
             logger.warning(f"학교 파일이 존재하지 않습니다: {file_path}")
             return
 
         df = read_csv_with_auto_encoding(file_path)
-        logger.info(f"학교 데이터 정규화 시작: {len(df)}개")
+        
+        # 시작 행 설정
+        if start_row > 0:
+            logger.info(f"학교 데이터 정규화 재개: {start_row}행부터 시작, 총 {len(df)}개 중 {len(df) - start_row}개 남음")
+            df = df.iloc[start_row:]
+        else:
+            logger.info(f"학교 데이터 정규화 시작: {len(df)}개")
 
         for idx, row in df.iterrows():
             address_raw = str(row.get('ORG_RDNMA', ''))
@@ -1269,14 +1396,20 @@ class InfraNormalizer:
                 self.normalized_facilities.append(facility_data)
         logger.info(f"학교 데이터 정규화 완료: {len(self.normalized_facilities)}개")
 
-    def _normalize_parks(self, file_path: Path):
+    def _normalize_parks(self, file_path: Path, start_row: int = 0):
         """공원 데이터 정규화"""
         if not file_path.exists():
             logger.warning(f"공원 파일이 존재하지 않습니다: {file_path}")
             return
 
         df = read_csv_with_auto_encoding(file_path)
-        logger.info(f"공원 데이터 정규화 시작: {len(df)}개")
+        
+        # 시작 행 설정
+        if start_row > 0:
+            logger.info(f"공원 데이터 정규화 재개: {start_row}행부터 시작, 총 {len(df)}개 중 {len(df) - start_row}개 남음")
+            df = df.iloc[start_row:]
+        else:
+            logger.info(f"공원 데이터 정규화 시작: {len(df)}개")
 
         for idx, row in df.iterrows():
             address_raw = str(row.get('P_ADDR', ''))
@@ -1407,14 +1540,20 @@ class InfraNormalizer:
 
         logger.info(f"지하철역 데이터 정규화 완료: {len(self.normalized_subway_stations)}개")
 
-    def _normalize_pharmacies(self, file_path: Path):
+    def _normalize_pharmacies(self, file_path: Path, start_row: int = 0):
         """약국 데이터 정규화"""
         if not file_path.exists():
             logger.warning(f"약국 파일이 존재하지 않습니다: {file_path}")
             return
 
         df = read_csv_with_auto_encoding(file_path)
-        logger.info(f"약국 데이터 정규화 시작: {len(df)}개")
+        
+        # 시작 행 설정
+        if start_row > 0:
+            logger.info(f"약국 데이터 정규화 재개: {start_row}행부터 시작, 총 {len(df)}개 중 {len(df) - start_row}개 남음")
+            df = df.iloc[start_row:]
+        else:
+            logger.info(f"약국 데이터 정규화 시작: {len(df)}개")
 
         for idx, row in df.iterrows():
             address_raw = str(row.get('DUTYADDR', ''))
@@ -1465,14 +1604,20 @@ class InfraNormalizer:
                 self.normalized_facilities.append(facility_data)
         logger.info(f"약국 데이터 정규화 완료: {len(self.normalized_facilities)}개")
 
-    def _normalize_kindergartens(self, file_path: Path):
+    def _normalize_kindergartens(self, file_path: Path, start_row: int = 0):
         """유치원 데이터 정규화"""
         if not file_path.exists():
             logger.warning(f"유치원 파일이 존재하지 않습니다: {file_path}")
             return
 
         df = read_csv_with_auto_encoding(file_path)
-        logger.info(f"유치원 데이터 정규화 시작: {len(df)}개")
+        
+        # 시작 행 설정
+        if start_row > 0:
+            logger.info(f"유치원 데이터 정규화 재개: {start_row}행부터 시작, 총 {len(df)}개 중 {len(df) - start_row}개 남음")
+            df = df.iloc[start_row:]
+        else:
+            logger.info(f"유치원 데이터 정규화 시작: {len(df)}개")
 
         for idx, row in df.iterrows():
             address_raw = str(row.get('ADDR', ''))
@@ -1522,14 +1667,20 @@ class InfraNormalizer:
                 self.normalized_facilities.append(facility_data)
         logger.info(f"유치원 데이터 정규화 완료: {len(self.normalized_facilities)}개")
 
-    def _normalize_colleges(self, file_path: Path):
+    def _normalize_colleges(self, file_path: Path, start_row: int = 0):
         """대학 데이터 정규화"""
         if not file_path.exists():
             logger.warning(f"대학 파일이 존재하지 않습니다: {file_path}")
             return
 
         df = read_csv_with_auto_encoding(file_path)
-        logger.info(f"대학 데이터 정규화 시작: {len(df)}개")
+        
+        # 시작 행 설정
+        if start_row > 0:
+            logger.info(f"대학 데이터 정규화 재개: {start_row}행부터 시작, 총 {len(df)}개 중 {len(df) - start_row}개 남음")
+            df = df.iloc[start_row:]
+        else:
+            logger.info(f"대학 데이터 정규화 시작: {len(df)}개")
 
         for idx, row in df.iterrows():
             address_raw = str(row.get('ADD_KOR', ''))
@@ -1656,29 +1807,50 @@ class InfraNormalizer:
         
         openseoul_dir = self.data_dir  # backend/data/public-api/openseoul
 
-        # # 어린이집 데이터
-        # childcare_file = openseoul_dir / "seoul_ChildCareInfo_20250919.csv"
-        # self._normalize_childcare_centers(childcare_file)
+        # 어린이집 데이터 - 진행 상황 확인 후 재개
+        childcare_file = openseoul_dir / "seoul_ChildCareInfo_20250928.csv"
+        childcare_start_row = self.get_resume_point(output_dir, 'childCare') if output_dir else 0
+        if childcare_start_row > 0:
+            logger.info(f"어린이집 데이터 재개: {childcare_start_row}행부터 시작")
+        self._normalize_childcare_centers(childcare_file, childcare_start_row)
         
-        # # 유치원 데이터
-        # kindergarten_file = openseoul_dir / "seoul_childSchoolInfo_20250919.csv"
-        # self._normalize_kindergartens(kindergarten_file)
+        # 유치원 데이터 - 진행 상황 확인 후 재개
+        kindergarten_file = openseoul_dir / "seoul_childSchoolInfo_20250919.csv"
+        kindergarten_start_row = self.get_resume_point(output_dir, 'childSchool') if output_dir else 0
+        if kindergarten_start_row > 0:
+            logger.info(f"유치원 데이터 재개: {kindergarten_start_row}행부터 시작")
+        self._normalize_kindergartens(kindergarten_file, kindergarten_start_row)
         
-        # # 학교 데이터 (초중고)
-        # school_file = openseoul_dir / "seoul_neisSchoolInfo_20250919.csv"
-        # self._normalize_schools(school_file)
+        # 학교 데이터 (초중고) - 진행 상황 확인 후 재개
+        school_file = openseoul_dir / "seoul_neisSchoolInfo_20250928.csv"
+        school_start_row = self.get_resume_point(output_dir, 'school') if output_dir else 0
+        if school_start_row > 0:
+            logger.info(f"학교 데이터 재개: {school_start_row}행부터 시작")
+        self._normalize_schools(school_file, school_start_row)
         
-        # # 대학 데이터
-        # college_file = openseoul_dir / "seoul_SebcCollegeInfoKor_20250919.csv"
-        # self._normalize_colleges(college_file)
+        # # 대학 데이터 - 진행 상황 확인 후 재개
+        college_file = openseoul_dir / "seoul_SebcCollegeInfoKor_20250919.csv"
+        college_start_row = self.get_resume_point(output_dir, 'college') if output_dir else 0
+        if college_start_row > 0:
+            logger.info(f"대학 데이터 재개: {college_start_row}행부터 시작")
+        self._normalize_colleges(college_file, college_start_row)
         
-        # # 공원 데이터
-        # park_file = openseoul_dir / "seoul_SearchParkInfoService_20250919.csv"
-        # self._normalize_parks(park_file)
+        # 공원 데이터 - 진행 상황 확인 후 재개
+        park_file = openseoul_dir / "seoul_SearchParkInfoService_20250919.csv"
+        park_start_row = self.get_resume_point(output_dir, 'park') if output_dir else 0
+        if park_start_row > 0:
+            logger.info(f"공원 데이터 재개: {park_start_row}행부터 시작")
+        self._normalize_parks(park_file, park_start_row)
         
-        # # 약국 데이터
-        # pharmacy_file = openseoul_dir / "seoul_TbPharmacyOperateInfo_20250919.csv"
-        # self._normalize_pharmacies(pharmacy_file)
+        # 약국 데이터 - 진행 상황 확인 후 재개
+        pharmacy_file = self.find_latest_csv_file(openseoul_dir, "seoul_TbPharmacyOperateInfo")
+        if pharmacy_file:
+            pharmacy_start_row = self.get_resume_point(output_dir, 'pharmacy') if output_dir else 0
+            if pharmacy_start_row > 0:
+                logger.info(f"약국 데이터 재개: {pharmacy_start_row}행부터 시작")
+            self._normalize_pharmacies(pharmacy_file, pharmacy_start_row)
+        else:
+            logger.warning("약국 CSV 파일을 찾을 수 없습니다.")
 
         # 지하철역과 버스정류소는 좌표 기반이므로 제외
         subway_file = openseoul_dir / "seoul_subwayStationMaster_20250928.csv"
@@ -1691,27 +1863,41 @@ class InfraNormalizer:
         logger.info(f"localdata 디렉토리: {localdata_dir}")
         logger.info(f"localdata 디렉토리 존재: {localdata_dir.exists()}")
         
-        # # 공공체육시설 데이터
-        # sports_file = localdata_dir / "utf8_서울시 공공체육시설 정보.csv"
-        # logger.info(f"체육시설 파일: {sports_file}")
-        # logger.info(f"체육시설 파일 존재: {sports_file.exists()}")
-        # if sports_file.exists():
-        #     self._normalize_sports_facilities(sports_file)
+        # 공공체육시설 데이터 - 진행 상황 확인 후 재개
+        sports_file = localdata_dir / "utf8_서울시 공공체육시설 정보.csv"
+        logger.info(f"체육시설 파일: {sports_file}")
+        logger.info(f"체육시설 파일 존재: {sports_file.exists()}")
+        if sports_file.exists():
+            sports_start_row = self.get_resume_point(output_dir, 'gym') if output_dir else 0
+            if sports_start_row > 0:
+                logger.info(f"공공체육시설 데이터 재개: {sports_start_row}행부터 시작")
+            self._normalize_sports_facilities(sports_file, sports_start_row)
         
-        # # 마트 데이터
-        # mart_file = localdata_dir / "utf8_서울시 마트.csv"
-        # if mart_file.exists():
-        #     self._normalize_marts(mart_file)
+        # 마트 데이터 - 진행 상황 확인 후 재개
+        mart_file = localdata_dir / "utf8_서울시 마트.csv"
+        if mart_file.exists():
+            mart_start_row = self.get_resume_point(output_dir, 'mt') if output_dir else 0
+            if mart_start_row > 0:
+                logger.info(f"마트 데이터 재개: {mart_start_row}행부터 시작")
+            self._normalize_marts(mart_file, mart_start_row)
         
-        # # 병원 데이터
-        # hospital_file = localdata_dir / "utf8_서울시병원_내과소아과응급의학과.csv"
-        # if hospital_file.exists():
-        #     self._normalize_hospitals(hospital_file)
+        # 병원 데이터 - 진행 상황 확인 후 재개
+        hospital_file = localdata_dir / "utf8_서울시병원_내과소아과응급의학과.csv"
+        if hospital_file.exists():
+            hospital_start_row = self.get_resume_point(output_dir, 'hos') if output_dir else 0
+            if hospital_start_row > 0:
+                logger.info(f"병원 데이터 재개: {hospital_start_row}행부터 시작")
+            self._normalize_hospitals(hospital_file, hospital_start_row)
         
-        # # 편의점 데이터
-        # convenience_file = localdata_dir / "utf8_서울시 편의점.csv"
-        # if convenience_file.exists():
-        #     self._normalize_convenience_stores(convenience_file)
+        # 편의점 데이터 - 진행 상황 확인 후 재개
+        convenience_file = self.find_latest_csv_file(localdata_dir, "utf8_서울시 편의점")
+        if convenience_file:
+            convenience_start_row = self.get_resume_point(output_dir, 'convenience') if output_dir else 0
+            if convenience_start_row > 0:
+                logger.info(f"편의점 데이터 재개: {convenience_start_row}행부터 시작")
+            self._normalize_convenience_stores(convenience_file, convenience_start_row)
+        else:
+            logger.warning("편의점 CSV 파일을 찾을 수 없습니다.")
 
         logger.info(f"총 {len(self.normalized_facilities)}개의 시설 데이터와 {len(self.normalized_subway_stations)}개의 지하철역 데이터 정규화 완료.")
         
@@ -1727,80 +1913,20 @@ class InfraNormalizer:
             "failed_addresses": self.failed_addresses
         }
     
-    def save_normalized_data(self, output_dir: Path) -> Path:
-        """정규화된 데이터를 JSON 파일로 저장"""
-        import json
-        
-        # 출력 디렉토리 생성
-        output_dir.mkdir(parents=True, exist_ok=True)
-        
-        # 정규화된 데이터 구성
-        # 정규화된 데이터 구조화
-        public_facilities_data = {
-            "public_facilities": self.normalized_facilities,
-            "metadata": {
-                "normalized_at": datetime.now().isoformat(),
-                "facilities_count": len(self.normalized_facilities),
-                "failed_addresses_count": len(self.failed_addresses)
-            }
-        }
-        
-        subway_stations_data = {
-            "subway_stations": self.normalized_subway_stations,
-            "metadata": {
-                "normalized_at": datetime.now().isoformat(),
-                "subway_stations_count": len(self.normalized_subway_stations)
-            }
-        }
-        
-        # JSON 파일로 저장 (별도 파일)
-        public_facilities_file = output_dir / "public_facilities.json"
-        with open(public_facilities_file, 'w', encoding='utf-8') as f:
-            json.dump(public_facilities_data, f, ensure_ascii=False, indent=2)
-        
-        subway_stations_file = output_dir / "subway_stations.json"
-        with open(subway_stations_file, 'w', encoding='utf-8') as f:
-            json.dump(subway_stations_data, f, ensure_ascii=False, indent=2)
-        
-        # 버스정류소 데이터 저장
-        bus_stops_data = {
-            "bus_stops": self.normalized_bus_stops,
-            "metadata": {
-                "normalized_at": datetime.now().isoformat(),
-                "bus_stops_count": len(self.normalized_bus_stops)
-            }
-        }
-        
-        bus_stops_file = output_dir / "bus_stops.json"
-        with open(bus_stops_file, 'w', encoding='utf-8') as f:
-            json.dump(bus_stops_data, f, ensure_ascii=False, indent=2)
-        
-        # 메타데이터 파일 저장
-        metadata_file = output_dir / "metadata.json"
-        combined_metadata = {
-            "normalized_at": datetime.now().isoformat(),
-            "public_facilities_count": len(self.normalized_facilities),
-            "subway_stations_count": len(self.normalized_subway_stations),
-            "bus_stops_count": len(self.normalized_bus_stops)
-        }
-        with open(metadata_file, 'w', encoding='utf-8') as f:
-            json.dump(combined_metadata, f, ensure_ascii=False, indent=2)
-        
-        logger.info(f"정규화된 데이터 저장 완료:")
-        logger.info(f"  - public_facilities.json: {len(self.normalized_facilities)}개")
-        logger.info(f"  - subway_stations.json: {len(self.normalized_subway_stations)}개")
-        logger.info(f"  - bus_stops.json: {len(self.normalized_bus_stops)}개")
-        logger.info(f"  - metadata.json: 메타데이터")
-        
-        return public_facilities_file, subway_stations_file
 
 
-    def _normalize_sports_facilities(self, file_path: Path):
+    def _normalize_sports_facilities(self, file_path: Path, start_row: int = 0):
         """공공체육시설 정보 정규화"""
         logger.info(f"공공체육시설 정보 정규화 시작: {file_path}")
         
         df = read_csv_with_auto_encoding(file_path, dtype=str)
-        logger.info(f"공공체육시설 데이터 로드: {len(df)}개")
+        
+        # 시작 행 설정
+        if start_row > 0:
+            logger.info(f"공공체육시설 데이터 정규화 재개: {start_row}행부터 시작, 총 {len(df)}개 중 {len(df) - start_row}개 남음")
+            df = df.iloc[start_row:]
+        else:
+            logger.info(f"공공체육시설 데이터 로드: {len(df)}개")
         
         for idx, row in df.iterrows():
             try:
@@ -1867,12 +1993,18 @@ class InfraNormalizer:
         
         logger.info(f"공공체육시설 정규화 완료: {len(df)}개")
 
-    def _normalize_marts(self, file_path: Path):
+    def _normalize_marts(self, file_path: Path, start_row: int = 0):
         """마트 정보 정규화"""
         logger.info(f"마트 정보 정규화 시작: {file_path}")
         
         df = read_csv_with_auto_encoding(file_path, dtype=str)
-        logger.info(f"마트 데이터 로드: {len(df)}개")
+        
+        # 시작 행 설정
+        if start_row > 0:
+            logger.info(f"마트 데이터 정규화 재개: {start_row}행부터 시작, 총 {len(df)}개 중 {len(df) - start_row}개 남음")
+            df = df.iloc[start_row:]
+        else:
+            logger.info(f"마트 데이터 로드: {len(df)}개")
         
         for idx, row in df.iterrows():
             try:
@@ -1940,12 +2072,18 @@ class InfraNormalizer:
         
         logger.info(f"마트 정규화 완료: {len(df)}개")
 
-    def _normalize_convenience_stores(self, file_path: Path):
+    def _normalize_convenience_stores(self, file_path: Path, start_row: int = 0):
         """편의점 정보 정규화"""
         logger.info(f"편의점 정보 정규화 시작: {file_path}")
         
         df = read_csv_with_auto_encoding(file_path, dtype=str)
-        logger.info(f"편의점 데이터 로드: {len(df)}개")
+        
+        # 시작 행 설정
+        if start_row > 0:
+            logger.info(f"편의점 데이터 정규화 재개: {start_row}행부터 시작, 총 {len(df)}개 중 {len(df) - start_row}개 남음")
+            df = df.iloc[start_row:]
+        else:
+            logger.info(f"편의점 데이터 로드: {len(df)}개")
         
         for idx, row in df.iterrows():
             try:
@@ -2016,12 +2154,18 @@ class InfraNormalizer:
         
         logger.info(f"편의점 정규화 완료: {len(df)}개")
 
-    def _normalize_hospitals(self, file_path: Path):
+    def _normalize_hospitals(self, file_path: Path, start_row: int = 0):
         """병원 정보 정규화"""
         logger.info(f"병원 정보 정규화 시작: {file_path}")
         
         df = read_csv_with_auto_encoding(file_path, dtype=str)
-        logger.info(f"병원 데이터 로드: {len(df)}개")
+        
+        # 시작 행 설정
+        if start_row > 0:
+            logger.info(f"병원 데이터 정규화 재개: {start_row}행부터 시작, 총 {len(df)}개 중 {len(df) - start_row}개 남음")
+            df = df.iloc[start_row:]
+        else:
+            logger.info(f"병원 데이터 로드: {len(df)}개")
         
         for idx, row in df.iterrows():
             try:
