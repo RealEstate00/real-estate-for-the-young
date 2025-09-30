@@ -43,8 +43,9 @@ def project_root() -> Path:
     here = Path(__file__).resolve()
     # Walk up and look for a parent that looks like the repo root.
     for p in (here,) + tuple(here.parents):
-        backend_dir = p / "backend"
-        if backend_dir.is_dir() and ((p / ".git").exists() or (p / "pyproject.toml").exists()):
+        # Check if this directory contains both 'backend' and 'libs' folders
+        if ((p / "backend").is_dir() and (p / "libs").is_dir() and 
+            ((p / ".git").exists() or (p / "pyproject.toml").exists())):
             return p
 
     # Last resort: CWD (not ideal; prefer setting PROJECT_ROOT)
@@ -59,7 +60,12 @@ CONFIGS_DIR: Path = BACKEND_DIR / "configs"
 LOGS_DIR: Path = BACKEND_DIR / "logs"
 
 # Standard data lifecycle folders
-HOUSING_DIR: Path = DATA_DIR / "housing"
+RAW_DIR: Path = DATA_DIR / "raw"
+NORMALIZED_DIR: Path = DATA_DIR / "normalized"
+HOUSING_DIR: Path = DATA_DIR / "raw" / "housing"
+HOUSING_NORMALIZED_DIR: Path = DATA_DIR / "normalized" / "housing"
+INFRA_NORMALIZED_DIR: Path = DATA_DIR / "normalized" / "infra"
+RTMS_DIR: Path = DATA_DIR / "raw" / "rtms"
 
 def ensure_dir(path: Path) -> Path:
     """Create the directory if missing and return it."""
@@ -83,7 +89,7 @@ def make_run_dir(source: str, run_id: str | None = None, date_ymd: str | None = 
     Create and return a canonical run directory under HOUSING_DIR.
 
     Folder layout:
-        data/housing/<source>/<YYYY-MM-DD>/
+        data/raw/housing/<source>/<YYYY-MM-DD>/
 
     Parameters
     ----------
@@ -105,6 +111,31 @@ def make_run_dir(source: str, run_id: str | None = None, date_ymd: str | None = 
     run_dir = HOUSING_DIR / src / date_str
     return ensure_dir(run_dir)
 
+def make_normalized_dir(source: str, date_ymd: str | None = None,
+                       tz: timezone | None = KST) -> Path:
+    """
+    Create and return a canonical normalized data directory.
+
+    Folder layout:
+        data/normalized/housing/<YYYY-MM-DD>/<source>/
+
+    Parameters
+    ----------
+    source : str
+        Logical data source (e.g., 'sohouse', 'cohouse', 'lh', 'youth').
+    date_ymd : str | None
+        Optional 'YYYY-MM-DD'. If omitted, uses today's date (UTC).
+
+    Returns
+    -------
+    Path
+        Absolute path to the created normalized directory.
+    """
+    src = sanitize_component(source)
+    date_str = date_ymd or today_ymd(tz)
+    normalized_dir = HOUSING_NORMALIZED_DIR / date_str / src
+    return ensure_dir(normalized_dir)
+
 __all__ = [
     "project_root",
     "PROJECT_ROOT",
@@ -112,12 +143,15 @@ __all__ = [
     "DATA_DIR",
     "CONFIGS_DIR",
     "LOGS_DIR",
+    "RAW_DIR",
+    "NORMALIZED_DIR",
     "HOUSING_DIR",
-    "INTERIM_DIR",
-    "PROCESSED_DIR",
-    "EXTERNAL_DIR",
+    "HOUSING_NORMALIZED_DIR",
+    "INFRA_NORMALIZED_DIR",
+    "RTMS_DIR",
     "ensure_dir",
     "today_ymd",
     "sanitize_component",
     "make_run_dir",
+    "make_normalized_dir",
 ]

@@ -56,7 +56,8 @@ data-collection-housing normalized process --platform cohouse
 data-load housing
 
 # 공공시설 데이터 수집 및 로드
-data-collection-infra api load
+data-collection-infra api collect
+data-collection-infra normalized process
 data-load infra
 ```
 
@@ -80,11 +81,10 @@ data-collection-housing normalized process --platform cohouse
 
 ```bash
 # API 데이터 수집
-data-collection-infra api load
+data-collection-infra api collect
 
-# 서울시 공공데이터 API
-data-collection-infra seoul normalize
-data-collection-infra seoul load
+# 데이터 정규화
+data-collection-infra normalized process
 ```
 
 ### 데이터베이스 관리 명령어
@@ -164,18 +164,11 @@ backend/
 │   │   ├── housing/          # 주택 정규화 데이터
 │   │   └── infra/            # 공공시설 정규화 데이터
 │   └── raw/                  # 원시 크롤링 데이터
-├── db/
-│   ├── housing/              # 주택 스키마 관련
-│   ├── infra/                # 인프라 스키마 관련
-│   └── db_manager.py         # data-db 명령어
 ├── services/
-│   └── data_collection/
-│       ├── cli/
-│       │   ├── housing/      # data-collection-housing
-│       │   └── infra/        # data-collection-infra
-│       ├── crawlers/         # 크롤링 모듈
-│       └── normalized/       # 정규화 모듈
-└── load_normalized_data.py   # data-load 명령어
+│   ├── db/                   # 데이터베이스 관리
+│   ├── data_collection/      # 데이터 수집
+│   └── loading/              # 데이터 로딩
+└── libs/                     # 공통 라이브러리
 ```
 
 ## 🔧 문제 해결
@@ -260,8 +253,8 @@ data-load housing
 
 ```bash
 # 공공시설 데이터 수집
-data-collection-infra api load
-data-collection-infra seoul normalize
+data-collection-infra api collect
+data-collection-infra normalized process
 
 # 데이터베이스에 로드
 data-load infra
@@ -279,7 +272,7 @@ data-db structure addresses
 
 ## 📚 추가 문서
 
-- [COMMANDS.md](COMMANDS.md) - 상세한 명령어 가이드
+- [COMMANDS.md](COMMANDS.md) - 간소화된 명령어 가이드
 - [backend/env.example](backend/env.example) - 환경 변수 예시
 
 ## 🎯 개발 상태
@@ -312,4 +305,4 @@ data-db structure addresses
 
 ---
 
-**마지막 업데이트**: 2025-09-28
+**마지막 업데이트**: 2025-09-30
