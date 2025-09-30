@@ -1,103 +1,172 @@
--- RTMS (Real Transaction Market System) 스키마
--- 실거래가 및 시장 분석 데이터 관리
+-- ============================================================================
+-- Real Estate for the Young - Database Schema
+-- ============================================================================
 
--- Set schema context
-SET search_path TO rtms, housing, infra, public;
+-- ============================================================================
+-- RTMS (Real Transaction Management System) Schema
+-- 국토교통부 실거래가 데이터
+-- ============================================================================
 
--- 1) 실거래 데이터
-CREATE TABLE IF NOT EXISTS rtms.transaction_data (
-    id              BIGSERIAL PRIMARY KEY,
-    transaction_id  TEXT UNIQUE NOT NULL,           -- 거래 고유 ID
-    address_raw     TEXT NOT NULL,                  -- 거래 주소
-    address_id      VARCHAR(255) REFERENCES housing.addresses(address_ext_id),
-    building_name   TEXT,                           -- 건물명
-    building_type   TEXT,                           -- 건물 유형 (아파트, 오피스텔 등)
-    transaction_type TEXT NOT NULL,                 -- 거래 유형 (매매, 전세, 월세)
-    price           BIGINT NOT NULL,                -- 거래 가격 (원)
-    deposit         BIGINT,                         -- 보증금 (전세/월세)
-    monthly_rent    BIGINT,                         -- 월세 (월세만)
-    area_m2         DECIMAL(10,2),                  -- 면적 (제곱미터)
-    floor           INTEGER,                        -- 층수
-    total_floors    INTEGER,                        -- 총 층수
-    room_count      INTEGER,                        -- 방 개수
-    bathroom_count  INTEGER,                        -- 화장실 개수
-    transaction_date DATE NOT NULL,                 -- 거래일
-    contract_date   DATE,                           -- 계약일
-    transaction_extra JSONB DEFAULT '{}'::jsonb,    -- 거래별 추가 정보
-    data_source     TEXT NOT NULL,                  -- 'rtms', 'openseoul', 'manual'
-    last_updated    TIMESTAMPTZ DEFAULT now(),
-    created_at      TIMESTAMPTZ DEFAULT now()
+-- 실거래가 - 전월세 - 원본 데이터 테이블 (통합)
+CREATE TABLE IF NOT EXISTS rtms.transactions_rent (
+    id BIGSERIAL PRIMARY KEY,
+    
+    -- 주택 유형 및 위치 정보
+    building_type VARCHAR(20) NOT NULL,  -- '단독다가구', '아파트', '연립다세대', '오피스텔'
+    sigungu VARCHAR(100) NOT NULL,       -- 시군구 (예: '서울특별시 강남구')
+    dong VARCHAR(100),                   -- 법정동/단지명
+    emd_code VARCHAR(10),                -- 읍면동 코드
+    building_name VARCHAR(200),          -- 아파트명/건물명 (단독다가구는 NULL)
+    
+    -- 면적 및 층 정보
+    area_type VARCHAR(20) NOT NULL,         -- 면적 유형 ('전용면적', '계약면적')
+    area_m2 DECIMAL(10, 2) NOT NULL,         -- 면적(㎡)
+    area_range VARCHAR(20),                  -- 면적구간 ('~60', '60~85', '85~102', '102~135', '135~')
+    floor INT,                               -- 층 (단독다가구는 NULL)
+    
+    -- 계약 정보
+    contract_type VARCHAR(10) NOT NULL,      -- 계약구분 ('전세', '월세')
+    contract_year_month INT NOT NULL,        -- 계약년월 (YYYYMM)
+    deposit_amount BIGINT NOT NULL,          -- 보증금(원)
+    monthly_rent BIGINT NOT NULL DEFAULT 0,  -- 월세금(원)
+    
+    -- 환산가액 (계산 컬럼)
+    converted_price DECIMAL(15, 2),          -- 환산가액 = (보증금 + 월세*100) / 면적
+    
+    -- 건축 및 계약기간
+    construction_year INT,                   -- 건축년도
+    contract_month VARCHAR(10),              -- 계약월 (예: '상순', '중순', '하순')
+    use_type VARCHAR(20),                    -- 전용구분 (예: '거주용', '오피스텔(주거용)')
+    contract_start_ym INT,                   -- 계약기간시작 (YYYYMM)
+    contract_end_ym INT,                     -- 계약기간끝 (YYYYMM)
+    
+    -- 메타 정보
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    
+    -- 복합 유니크 제약조건 (중복 거래 방지)
+    CONSTRAINT uq_rtms_transaction UNIQUE (
+        building_type, sigungu, dong, building_name, 
+        area_m2, floor, contract_year_month, 
+        deposit_amount, monthly_rent, contract_type
+    )
 );
 
--- 2) 가격 동향 데이터
-CREATE TABLE IF NOT EXISTS rtms.price_trends (
-    id              BIGSERIAL PRIMARY KEY,
-    address_id      VARCHAR(255) NOT NULL REFERENCES housing.addresses(address_ext_id),
-    period_type     TEXT NOT NULL,                  -- 'daily', 'weekly', 'monthly', 'yearly'
-    period_start    DATE NOT NULL,                  -- 기간 시작일
-    period_end      DATE NOT NULL,                  -- 기간 종료일
-    avg_price       BIGINT,                         -- 평균 가격
-    min_price       BIGINT,                         -- 최저 가격
-    max_price       BIGINT,                         -- 최고 가격
-    transaction_count INTEGER,                      -- 거래 건수
-    price_change_rate DECIMAL(5,2),                 -- 가격 변동률 (%)
-    trend_extra     JSONB DEFAULT '{}'::jsonb,      -- 동향별 추가 정보
-    data_source     TEXT NOT NULL,
-    last_updated    TIMESTAMPTZ DEFAULT now(),
-    created_at      TIMESTAMPTZ DEFAULT now(),
-    UNIQUE(address_id, period_type, period_start)
-);
+-- 인덱스 생성 (쿼리 성능 최적화)
+CREATE INDEX IF NOT EXISTS idx_rtms_building_type ON rtms.transactions_rent(building_type);
+CREATE INDEX IF NOT EXISTS idx_rtms_area_range ON rtms.transactions_rent(area_range);
+CREATE INDEX IF NOT EXISTS idx_rtms_contract_ym ON rtms.transactions_rent(contract_year_month);
+CREATE INDEX IF NOT EXISTS idx_rtms_sigungu ON rtms.transactions_rent(sigungu);
+CREATE INDEX IF NOT EXISTS idx_rtms_composite ON rtms.transactions_rent(building_type, area_range, contract_year_month);
+CREATE INDEX IF NOT EXISTS idx_rtms_dong ON rtms.transactions_rent(dong) WHERE dong IS NOT NULL;
 
--- 3) 시장 분석 데이터
-CREATE TABLE IF NOT EXISTS rtms.market_analysis (
-    id              BIGSERIAL PRIMARY KEY,
-    analysis_type   TEXT NOT NULL,                  -- 'district', 'building_type', 'price_range'
-    analysis_target TEXT NOT NULL,                  -- 분석 대상 (구명, 건물유형 등)
-    analysis_period TEXT NOT NULL,                  -- 'monthly', 'quarterly', 'yearly'
-    analysis_date   DATE NOT NULL,                  -- 분석 기준일
-    market_index    DECIMAL(10,2),                  -- 시장 지수
-    price_forecast  BIGINT,                         -- 가격 예측
-    market_trend    TEXT,                           -- 'rising', 'falling', 'stable'
-    confidence_level DECIMAL(5,2),                  -- 신뢰도 (%)
-    analysis_extra  JSONB DEFAULT '{}'::jsonb,      -- 분석별 추가 정보
-    data_source     TEXT NOT NULL,
-    last_updated    TIMESTAMPTZ DEFAULT now(),
-    created_at      TIMESTAMPTZ DEFAULT now()
-);
+-- 환산가액 자동 계산 트리거 함수
+CREATE OR REPLACE FUNCTION rtms.calculate_converted_price()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- 면적구간 자동 계산
+    NEW.area_range := CASE 
+        WHEN NEW.area_m2 <= 60 THEN '~60이하'
+        WHEN NEW.area_m2 > 60 AND NEW.area_m2 <= 85 THEN '60초과~85이하'
+        WHEN NEW.area_m2 > 85 AND NEW.area_m2 <= 102 THEN '85초과~102이하'
+        WHEN NEW.area_m2 > 102 AND NEW.area_m2 <= 135 THEN '102초과~135이하'
+        ELSE '135초과~'
+    END;
+    
+    -- 환산가액 계산: (전세금 + 월세*100) / 면적
+    IF NEW.area_m2 > 0 THEN
+        NEW.converted_price := (NEW.deposit_amount + NEW.monthly_rent * 100.0) / NEW.area_m2;
+    ELSE
+        NEW.converted_price := NULL;
+    END IF;
+    
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
 
--- 4) 주택-실거래가 연결
-CREATE TABLE IF NOT EXISTS rtms.housing_transaction_links (
-    id              BIGSERIAL PRIMARY KEY,
-    notice_id       VARCHAR(255) NOT NULL REFERENCES housing.notices(notice_id),
-    transaction_id  BIGINT NOT NULL REFERENCES rtms.transaction_data(id),
-    similarity_score DECIMAL(5,2),                  -- 유사도 점수 (0-100)
-    link_type       TEXT NOT NULL,                  -- 'exact_match', 'similar', 'nearby'
-    link_extra      JSONB DEFAULT '{}'::jsonb,
-    created_at      TIMESTAMPTZ DEFAULT now(),
-    UNIQUE(notice_id, transaction_id)
-);
+-- 트리거 생성
+DROP TRIGGER IF EXISTS trigger_calculate_converted_price ON rtms.transactions_rent;
+CREATE TRIGGER trigger_calculate_converted_price
+    BEFORE INSERT OR UPDATE ON rtms.transactions_rent
+    FOR EACH ROW
+    EXECUTE FUNCTION rtms.calculate_converted_price();
 
--- 인덱스 생성
-CREATE INDEX IF NOT EXISTS idx_transaction_data_address ON rtms.transaction_data(address_id);
-CREATE INDEX IF NOT EXISTS idx_transaction_data_type ON rtms.transaction_data(transaction_type);
-CREATE INDEX IF NOT EXISTS idx_transaction_data_date ON rtms.transaction_data(transaction_date);
-CREATE INDEX IF NOT EXISTS idx_transaction_data_price ON rtms.transaction_data(price);
-CREATE INDEX IF NOT EXISTS idx_transaction_data_building ON rtms.transaction_data(building_type);
+-- ============================================================================
+-- 면적구간별 통계 Materialized View (성능 최적화용)
+-- ============================================================================
 
-CREATE INDEX IF NOT EXISTS idx_price_trends_address ON rtms.price_trends(address_id);
-CREATE INDEX IF NOT EXISTS idx_price_trends_period ON rtms.price_trends(period_type, period_start);
-CREATE INDEX IF NOT EXISTS idx_price_trends_date ON rtms.price_trends(period_start);
+CREATE MATERIALIZED VIEW IF NOT EXISTS rtms.area_statistics_rent AS
+SELECT 
+    building_type,
+    area_range,
+    contract_year_month,
+    sigungu,
+    COUNT(*) as transaction_count,
+    ROUND(AVG(converted_price)::numeric, 2) as avg_converted_price,
+    ROUND(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY converted_price)::numeric, 2) as median_converted_price,
+    ROUND(MIN(converted_price)::numeric, 2) as min_converted_price,
+    ROUND(MAX(converted_price)::numeric, 2) as max_converted_price,
+    ROUND(AVG(deposit_amount)::numeric, 0) as avg_deposit,
+    ROUND(AVG(monthly_rent)::numeric, 0) as avg_monthly_rent,
+    ROUND(AVG(area_m2)::numeric, 2) as avg_area
+FROM rtms.transactions_rent
+GROUP BY building_type, area_range, contract_year_month, sigungu;
 
-CREATE INDEX IF NOT EXISTS idx_market_analysis_type ON rtms.market_analysis(analysis_type);
-CREATE INDEX IF NOT EXISTS idx_market_analysis_target ON rtms.market_analysis(analysis_target);
-CREATE INDEX IF NOT EXISTS idx_market_analysis_date ON rtms.market_analysis(analysis_date);
+-- Materialized View 인덱스
+CREATE INDEX IF NOT EXISTS idx_area_stats_composite 
+    ON rtms.area_statistics_rent(building_type, area_range, contract_year_month);
 
-CREATE INDEX IF NOT EXISTS idx_housing_transaction_links_notice ON rtms.housing_transaction_links(notice_id);
-CREATE INDEX IF NOT EXISTS idx_housing_transaction_links_transaction ON rtms.housing_transaction_links(transaction_id);
+-- Materialized View 갱신 함수
+CREATE OR REPLACE FUNCTION rtms.refresh_area_statistics_rent()
+RETURNS void AS $$
+BEGIN
+    REFRESH MATERIALIZED VIEW CONCURRENTLY rtms.area_statistics_rent;
+END;
+$$ LANGUAGE plpgsql;
 
--- 거래 유형 기본 데이터 삽입
-INSERT INTO rtms.transaction_data (transaction_id, address_raw, transaction_type, price, transaction_date, data_source) VALUES
-('DUMMY_SALE', '더미매매', 'sale', 0, CURRENT_DATE, 'system'),
-('DUMMY_JEONSE', '더미전세', 'jeonse', 0, CURRENT_DATE, 'system'),
-('DUMMY_MONTHLY', '더미월세', 'monthly', 0, CURRENT_DATE, 'system')
-ON CONFLICT (transaction_id) DO NOTHING;
+-- ============================================================================
+-- 유틸리티 뷰 (간편 조회용)
+-- ============================================================================
+
+-- 최근 거래 통계 뷰 (최근 6개월)
+CREATE OR REPLACE VIEW rtms.recent_statistics_rent AS
+SELECT 
+    building_type,
+    area_range,
+    contract_year_month,
+    COUNT(*) as transaction_count,
+    ROUND(AVG(converted_price)::numeric, 2) as avg_converted_price,
+    ROUND(AVG(deposit_amount)::numeric, 0) as avg_deposit,
+    ROUND(AVG(monthly_rent)::numeric, 0) as avg_monthly_rent
+FROM rtms.transactions_rent
+WHERE contract_year_month >= TO_CHAR(CURRENT_DATE - INTERVAL '6 months', 'YYYYMM')::INTEGER
+GROUP BY building_type, area_range, contract_year_month
+ORDER BY contract_year_month DESC, building_type, area_range;
+
+-- 시군구별 평균 환산가액 뷰
+CREATE OR REPLACE VIEW rtms.sigungu_avg_price_rent AS
+SELECT 
+    sigungu,
+    building_type,
+    area_range,
+    COUNT(*) as transaction_count,
+    ROUND(AVG(converted_price)::numeric, 2) as avg_converted_price,
+    MAX(contract_year_month) as latest_contract_ym
+FROM rtms.transactions_rent
+WHERE contract_year_month >= TO_CHAR(CURRENT_DATE - INTERVAL '1 year', 'YYYYMM')::INTEGER
+GROUP BY sigungu, building_type, area_range
+ORDER BY sigungu, building_type, area_range;
+
+-- ============================================================================
+-- 스키마 생성 (가장 먼저 실행)
+-- ============================================================================
+CREATE SCHEMA IF NOT EXISTS rtms;
+
+-- ============================================================================
+-- 주석 추가
+-- ============================================================================
+COMMENT ON TABLE rtms.transactions_rent IS '국토교통부 실거래가 전월세 원본 데이터';
+COMMENT ON COLUMN rtms.transactions_rent.building_type IS '주택유형: 단독다가구, 아파트, 연립다세대, 오피스텔';
+COMMENT ON COLUMN rtms.transactions_rent.area_range IS '면적구간: ~60이하, 60초과~85이하, 85초과~102이하, 102초과~135이하, 135초과~';
+COMMENT ON COLUMN rtms.transactions_rent.converted_price IS '환산가액 = (보증금 + 월세*100) / 면적 (만원/㎡)';
+COMMENT ON MATERIALIZED VIEW rtms.area_statistics_rent IS '면적구간별 통계 집계 (성능 최적화용)';
