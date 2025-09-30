@@ -1,0 +1,55 @@
+default:
+  rate_limit_rps: 1.0
+  timeout_ms: 60000
+  max_pages: 5
+  user_agent: "SeoulHousingAssistBot/0.1 (contact: you@example.com)"
+
+sites:
+  sohouse_home:
+    platform: "사회주택 플랫폼"
+    list_url: "https://soco.seoul.go.kr/soHouse/pgm/home/sohome/list.do?menuNo=300006"
+    list_container: "tbody#cohomeForm"
+    detail_selector: "a.no-scr[href^='javascript:modify(']"
+    paging: "eval:cohomeList({page})"
+
+  cohouse_home:
+    platform: "공동체주택 플랫폼"
+    list_url: "https://soco.seoul.go.kr/coHouse/pgm/home/cohome/list.do?menuNo=200043"
+    list_container: "tbody#cohomeForm"
+    detail_selector: "a.no-scr[href^='javascript:modify(']"
+    paging: "eval:cohomeList({page})"
+
+  youth_bbs:
+    platform: "청년주택 플랫폼"
+    list_url: "https://soco.seoul.go.kr/youth/bbs/BMSR00015/list.do?menuNo=400008"
+    list_container: "tbody#boardList"
+    detail_selector: "td.align_left a[href*='view.do?boardId=']"
+    paging: "eval:cohomeList({page})"
+
+  ha_sh_plan:
+    platform: "SH_행복주택 플랫폼"
+    list_url: "https://www.i-sh.co.kr/main/lay2/S1T243C1043/contents.do#"
+    tab_selector: "li.snb_depth3:has(span:has-text('행복주택')) a:not(.current_selected)"
+
+  ha_lh_list:
+    platform: "LH_행복주택 플랫폼"
+    list_url: "https://apply.lh.or.kr/lhapply/apply/wt/wrtanc/selectWrtancList.do?mi=1026"
+    detail_selector: "a.wrtancInfoBtn"
+    detail_api:
+      method: "POST"
+      path: "/lhapply/apply/wt/wrtanc/selectWrtancInfo.do"
+      form_keys:
+        [
+          "panId",
+          "ccrCnntSysDsCd",
+          "uppAisTpCd",
+          "aisTpCd",
+          "mi",
+          "currPage",
+          "panSs",
+          "startDt",
+          "endDt",
+          "listCo",
+        ]
+    detail_root: "div.bbs_ViewA"
+    attach_selector: "a[href^='javascript:fileDownLoad']"

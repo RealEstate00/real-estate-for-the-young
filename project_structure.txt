@@ -1,0 +1,89 @@
+```
+real-estate-for-the-young/
+├── backend/                     # 백엔드 (Python)
+│   ├── services/               # 서비스 레이어
+│   │   ├── data_collection/    # 데이터 수집 서비스
+│   │   │   ├── cli/            # CLI 명령어
+│   │   │   │   ├── housing/    # 주택 데이터 수집 CLI
+│   │   │   │   │   ├── __main__.py
+│   │   │   │   │   ├── crawl_platforms_cli.py
+│   │   │   │   │   └── housing_normalized_cli.py
+│   │   │   │   └── infra/      # 인프라 데이터 수집 CLI
+│   │   │   │       ├── __main__.py
+│   │   │   │       ├── api_cli.py
+│   │   │   │       └── infra_normalized_cli.py
+│   │   │   ├── housing/        # 주택 데이터 수집
+│   │   │   │   ├── crawlers/   # 크롤링 서비스
+│   │   │   │   │   ├── base.py
+│   │   │   │   │   ├── so.py   # 사회주택 크롤러
+│   │   │   │   │   ├── co.py   # 공동체주택 크롤러
+│   │   │   │   │   ├── youth.py # 청년주택 크롤러
+│   │   │   │   │   ├── sh.py   # SH 공고 크롤러
+│   │   │   │   │   └── lh.py   # LH 공고 크롤러
+│   │   │   │   ├── normalized/ # 데이터 정규화
+│   │   │   │   │   ├── normalizer.py
+│   │   │   │   │   ├── address_api.py
+│   │   │   │   │   ├── amounts.py
+│   │   │   │   │   └── data_quality_enhancer.py
+│   │   │   │   └── mappers/    # 데이터 매핑
+│   │   │   │       ├── building_type.py
+│   │   │   │       └── platform.py
+│   │   │   ├── infra/          # 인프라 데이터 수집
+│   │   │   │   ├── collector/  # API 데이터 수집
+│   │   │   │   │   └── get_open_csv.py
+│   │   │   │   └── normalized/ # 인프라 데이터 정규화
+│   │   │   │       ├── infra_normalizer_NoJusoAPI.py
+│   │   │   │       ├── infra_normalizer_tryfail.py
+│   │   │   │       └── convert_jsonl_to_json.py
+│   │   │   └── parsers/        # 데이터 파싱
+│   │   │       ├── parsers.py
+│   │   │       └── data_analyzer.py
+│   │   ├── db/                 # 데이터베이스 관리
+│   │   │   ├── cli/            # DB CLI 명령어
+│   │   │   │   └── db_cli.py
+│   │   │   ├── common/         # 공통 DB 유틸리티
+│   │   │   │   ├── db_utils.py
+│   │   │   │   └── db_setup.py
+│   │   │   └── schema/         # PostgreSQL 스키마
+│   │   │       ├── schema_setup.sql
+│   │   │       ├── housing_schema.sql
+│   │   │       ├── infra_schema.sql
+│   │   │       └── rtms_schema.sql
+│   │   └── loading/            # 데이터 로딩
+│   │       ├── cli/            # 로딩 CLI 명령어
+│   │       │   └── load_cli.py
+│   │       ├── housing/        # 주택 데이터 로딩
+│   │       │   └── housing_db_loader.py
+│   │       └── infra/          # 인프라 데이터 로딩
+│   │           └── infra_db_loader.py
+│   ├── libs/                   # 공통 라이브러리
+│   │   ├── utils/              # 유틸리티 함수
+│   │   │   ├── paths.py
+│   │   │   ├── constants.py
+│   │   │   ├── dates_nums.py
+│   │   │   ├── hash_io.py
+│   │   │   └── helpers.py
+│   │   ├── models/             # 데이터 모델
+│   │   │   └── jsonb_models.py
+│   │   └── db/                 # DB 공통 모듈
+│   │       └── database.py
+│   ├── data/                   # 데이터 저장소
+│   │   ├── raw/               # 원시 데이터
+│   │   │   ├── housing/       # 주택 크롤링 데이터
+│   │   │   │   ├── sohouse/
+│   │   │   │   ├── cohouse/
+│   │   │   │   └── youth/
+│   │   │   ├── api/           # API 수집 데이터
+│   │   │   └── rtms/          # 실거래가 데이터
+│   │   └── normalized/        # 정규화된 데이터
+│   │       ├── housing/       # 주택 정규화 데이터
+│   │       └── infra/         # 인프라 정규화 데이터
+│   ├── configs/               # 설정 파일
+│   │   └── sites.yml
+│   └── logs/                  # 로그 파일
+├── pyproject.toml             # 프로젝트 설정
+├── env.example               # 환경 변수 예시
+├── README.md                 # 프로젝트 문서
+├── COMMANDS.md              # 명령어 가이드
+└── .gitignore               # Git 무시 파일
+```
