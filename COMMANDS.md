@@ -34,9 +34,13 @@ data-collection-housing crawl sohouse
 data-collection-infra api collect
 data-collection-infra normalized process
 
+# 실거래 데이터 정규화
+data-collection-rtms normalized process
+
 # 데이터베이스에 로드
 data-load housing
 data-load infra
+data-load rtms
 ```
 
 ---
@@ -66,6 +70,20 @@ data-collection-infra api collect
 # 데이터 정규화
 data-collection-infra normalized process
 ```
+
+#### `data-collection-rtms` - 실거래 데이터 수집 
+
+```bash
+# 데이터 정규화 (모든 주택유형)
+data-collection-rtms normalized process
+
+# 크롤링 csv 다운 -> 해당 파일로 노말라이징 안함
+
+# 상세 로그와 함께 실행
+data-collection-rtms normalized process --verbose
+```
+
+
 
 ### 데이터베이스 관리
 
@@ -102,7 +120,10 @@ data-load housing
 # 공공시설 데이터 로드
 data-load infra
 
-# 모든 데이터 통합 로드
+# 실거래 데이터 로드
+data-load rtms
+
+# 모든 데이터 통합 로드 (주택 + 공공시설 + 실거래)
 data-load all
 ```
 

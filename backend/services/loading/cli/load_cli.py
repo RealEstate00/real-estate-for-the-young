@@ -67,8 +67,47 @@ def load_housing_data(normalized_data_dir: str, db_url: Optional[str] = None) ->
     return _load_housing_dir(housing_root, dbu)
 
 def load_rtms_data(normalized_data_dir: str, db_url: Optional[str] = None) -> bool:
-    logger.warning("RTMS 로더는 아직 구현되지 않았습니다.")
-    return False
+    try:
+        root = Path(normalized_data_dir).resolve()
+        rtms_root = root / "rtms"
+        
+        if not rtms_root.exists():
+            logger.error("정규화된 RTMS 데이터 디렉토리가 존재하지 않습니다: %s", rtms_root)
+            return False
+
+        logger.info("DB 연결 테스트 중...")
+        if not test_connection():
+            logger.error("DB 연결 실패")
+            return False
+        logger.info("DB 연결 성공")
+
+        # RTMS 로더 import
+        from backend.services.loading.rtms.load_rtms_data import RTMSDataLoader
+        
+        # DB 설정
+        db_config = {
+            'host': os.getenv('PG_HOST', 'localhost'),
+            'port': os.getenv('PG_PORT', '5432'),
+            'database': os.getenv('PG_DB', 'rey'),
+            'user': os.getenv('PG_USER', 'postgres'),
+            'password': os.getenv('PG_PASSWORD', 'post1234'),
+        }
+        
+        logger.info("RTMS 데이터 디렉토리: %s", rtms_root)
+        logger.info("DB 호스트: %s:%s", db_config['host'], db_config['port'])
+        
+        # RTMS 데이터 로드
+        loader = RTMSDataLoader(db_config)
+        loader.connect()
+        loader.clear_and_load(rtms_root, batch_size=10000)
+        loader.close()
+        
+        logger.info("RTMS 데이터 로드 완료")
+        return True
+        
+    except Exception as e:
+        logger.exception("RTMS 데이터 로드 중 오류 발생: %s", e)
+        return False
 
 def load_infra_data(normalized_data_dir: str, db_url: Optional[str] = None) -> bool:
     try:
@@ -109,9 +148,19 @@ def load_infra_data(normalized_data_dir: str, db_url: Optional[str] = None) -> b
         return False
 
 def load_normalized_data(normalized_data_dir: str, db_url: Optional[str] = None) -> bool:
+    """모든 데이터 로드 (주택, 공공시설, 실거래)"""
+    logger.info("=== 전체 데이터 로드 시작 ===")
+    
     housing_ok = load_housing_data(normalized_data_dir, db_url)
     infra_ok = load_infra_data(normalized_data_dir, db_url)
-    return housing_ok and infra_ok
+    rtms_ok = load_rtms_data(normalized_data_dir, db_url)
+    
+    logger.info("=== 전체 데이터 로드 결과 ===")
+    logger.info("주택 데이터: %s", "성공" if housing_ok else "실패")
+    logger.info("공공시설 데이터: %s", "성공" if infra_ok else "실패")
+    logger.info("실거래 데이터: %s", "성공" if rtms_ok else "실패")
+    
+    return housing_ok and infra_ok and rtms_ok
 
 def main():
     import argparse
