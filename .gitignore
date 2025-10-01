@@ -160,6 +160,7 @@ celerybeat.pid
 # Environments
 .env
 .venv/
+.venv
 env/
 venv/
 ENV/
@@ -233,11 +234,8 @@ $RECYCLE.BIN/
 # 크롤링 엑셀 파일
 
 # data outputs // 크롤링 파일 제외
-backend/data/housing/
-backend/data/rtms/
-backend/data/public_data/
-backend/data/public_api/
 backend/data/normalized/
+backend/data/raw/
 
 !backend/data/*/README.md
 !backend/data/*/schema.*

@@ -6,21 +6,22 @@ from importlib import import_module
 
 COMMANDS = {
     "api": "backend.services.data_collection.cli.infra.api_cli",
-    "seoul": "backend.services.data_collection.cli.infra.seoul_api_cli",
+    "normalized": "backend.services.data_collection.cli.infra.infra_normalized_cli",
 }
 
 HELP = f"""data-collection-infra <command> [args]
 
 Commands:
-  api                API data collection commands (see module --help)
-  seoul              Seoul Open Data API commands (see module --help)
+  api                API data collection, normalization and DB loading commands (see module --help)
+  normalized         Infrastructure data normalization commands (see module --help)
 
 Examples:
   data-collection-infra api --help
+  data-collection-infra api collect
   data-collection-infra api load
-  data-collection-infra seoul --help
-  data-collection-infra seoul normalize
-  data-collection-infra seoul load
+  data-collection-infra api all
+  data-collection-infra normalized --help
+  data-collection-infra normalized process
 """
 
 def main() -> None:

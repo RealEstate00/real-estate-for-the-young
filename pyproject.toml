@@ -16,5 +16,6 @@ include = ["backend*"]    # discover backend, backend.services, ...
 [project.scripts]
 data-collection-housing = "backend.services.data_collection.cli.housing.__main__:main"
 data-collection-infra = "backend.services.data_collection.cli.infra.__main__:main"
-data-db = "backend.db.db_manager:main"
-data-load = "backend.services.data_collection.cli.housing.load_normalized_data:main"
+data-collection-rtms = "backend.services.data_collection.cli.rtms.__main__:main"
+data-db = "backend.services.db.cli.db_cli:main"
+data-load = "backend.services.loading.cli.load_cli:main"

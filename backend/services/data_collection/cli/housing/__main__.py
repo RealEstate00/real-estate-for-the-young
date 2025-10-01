@@ -5,8 +5,8 @@ import sys, runpy
 from importlib import import_module
 
 COMMANDS = {
-    "crawl": "backend.services.data_collection.cli.housing.crawl_platforms_raw",
-    "normalized": "backend.services.data_collection.cli.housing.normalized_cli",
+    "crawl": "backend.services.data_collection.cli.housing.crawl_platforms_cli",
+    "normalized": "backend.services.data_collection.cli.housing.housing_normalized_cli",
 }
 
 HELP = f"""data-collection-housing <command> [args]
