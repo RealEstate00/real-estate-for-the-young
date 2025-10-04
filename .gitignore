@@ -223,7 +223,10 @@ backend/data/vector_db/chroma/*
 !backend/data/*/schema.*
 !backend/data/*/example.*
 
-# CSV files
+# vector_db
+backend/data/PDF/chroma_db/
+backend/data/chroma_db/
+
 *.csv
 
 # Database files

@@ -34,6 +34,11 @@ pydantic>=2.9.0
 pydantic-settings==2.5.0
 chardet==5.2.0
 
+# Vector Database & Embeddings
+chromadb>=0.4.0
+sentence-transformers>=2.2.0
+tqdm>=4.65.0
+
 # Utilities
 python-multipart==0.0.6
 python-jose[cryptography]==3.3.0
