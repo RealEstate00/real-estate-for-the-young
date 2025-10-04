@@ -241,6 +241,10 @@ backend/data/raw/
 !backend/data/*/schema.*
 !backend/data/*/example.*
 
+# vector_db
+backend/data/PDF/chroma_db/
+backend/data/chroma_db/
+
 *.csv
 
 # Windows shortcuts
