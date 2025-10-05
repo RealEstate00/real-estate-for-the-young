@@ -1,8 +1,10 @@
-# ChromaDB 벡터 데이터베이스 가이드
+# ChromaDB 벡터 데이터베이스 가이드 (Inha 모듈)
 
 ## 📋 개요
 
-이 프로젝트는 ChromaDB와 한국어 특화 임베딩 모델(`jhgan/ko-sbert-nli`)을 사용하여 주택 데이터의 의미적 검색을 제공합니다. 사용자는 자연어로 주택을 검색하고, 유사한 특성을 가진 주택들을 찾을 수 있습니다.
+이 프로젝트는 ChromaDB와 한국어 특화 임베딩 모델(`jhgan/ko-sbert-nli`)을 사용하여 주택 데이터의 의미적 검색을 제공합니다. 사용자는 자연어로 주택을 검색하고, 유사한 특성을 가진 주택들을 찾을 수 있습니다. 
+
+**⚠️ 중요**: 이 모듈은 `inha` 전용으로 설계되었으며, 유사도 임계값이 `-0.3`으로 설정되어 음수 유사도 결과도 포함합니다.
 
 ## 🏗️ 아키텍처
 
@@ -35,26 +37,29 @@ pip install pydantic-settings
 
 ```bash
 # CSV 데이터를 벡터 데이터베이스에 로딩
-vector-db load-data
+vector-db-inha load-data
 
 # 기존 데이터 삭제 후 새로 로딩
-vector-db load-data --clear
+vector-db-inha load-data --clear
 
 # 진행 상황 확인
-vector-db info
+vector-db-inha info
 ```
 
 ### 3. 검색 테스트
 
 ```bash
-# 하이브리드 검색 (추천!) - 키워드 + 벡터 검색
-vector-db search "반려동물을 키울 수 있는 주택을 추천해줘" --hybrid
+# 스마트 검색 (기본값) - 자동 키워드 감지 + 벡터 검색
+vector-db-inha search "편의점이 있는 주택 추천해줘"
 
-# 지역 기반 하이브리드 검색
-vector-db search "홍대 근처 청년주택" --hybrid
+# 하이브리드 검색 - 키워드 + 벡터 검색
+vector-db-inha search "반려동물을 키울 수 있는 주택을 추천해줘" --hybrid
 
-# 기본 벡터 검색
-vector-db search "홍대 근처 청년주택"
+# 지역 기반 스마트 검색
+vector-db-inha search "홍대 근처 청년주택"
+
+# 세븐일레븐 브랜드 검색
+vector-db-inha search "세븐일레븐"
 
 # 결과 예시:
 # ┌──────┬─────────────────────┬──────────────────────┬────────────┬──────────────────┐
@@ -72,10 +77,10 @@ vector-db search "홍대 근처 청년주택"
 #### `load-data` - 데이터 로딩
 ```bash
 # 기본 로딩
-vector-db load-data
+vector-db-inha load-data
 
 # 옵션 사용
-vector-db load-data --csv-path ./custom_data.csv --batch-size 16 --clear
+vector-db-inha load-data --csv-path ./custom_data.csv --clear
 ```
 
 **옵션:**
@@ -85,7 +90,7 @@ vector-db load-data --csv-path ./custom_data.csv --batch-size 16 --clear
 
 #### `clear` - 데이터베이스 초기화
 ```bash
-vector-db clear
+vector-db-inha clear
 # ⚠️ 주의: 모든 데이터가 삭제됩니다!
 ```
 
@@ -93,23 +98,26 @@ vector-db clear
 
 #### `search` - 스마트 검색 시스템
 ```bash
-# 기본 벡터 검색
-vector-db search "원하는 주택 조건"
+# 스마트 검색 (기본값) - 자동 키워드 감지
+vector-db-inha search "편의점이 있는 주택 추천해줘"
 
-# 하이브리드 검색 (추천!) - 키워드 + 벡터 결합
-vector-db search "반려동물을 키울 수 있는 주택을 추천해줘" --hybrid
+# 하이브리드 검색 - 키워드 + 벡터 결합
+vector-db-inha search "반려동물을 키울 수 있는 주택을 추천해줘" --hybrid
 
 # 지역 필터링
-vector-db search "지하철역 가까운 곳" --district "강남구" --dong "대치동"
+vector-db-inha search "지하철역 가까운 곳" --district "강남구" --dong "대치동"
 
 # 테마 필터링
-vector-db search "반려동물 키울 수 있는 곳" --theme "반려동물"
+vector-db-inha search "반려동물 키울 수 있는 곳" --theme "반려동물"
 
-# 최소 유사도 필터링
-vector-db search "홍대 근처 청년주택" --min-sim 0.3
+# 최소 유사도 필터링 (기본값: -0.3)
+vector-db-inha search "홍대 근처 청년주택" --min-sim -0.1
+
+# 스마트 검색 비활성화
+vector-db-inha search "주택" --no-smart
 
 # 결과 개수 조정
-vector-db search "신혼부부 주택" --limit 20
+vector-db-inha search "신혼부부 주택" --limit 20
 ```
 
 **옵션:**
@@ -118,29 +126,35 @@ vector-db search "신혼부부 주택" --limit 20
 - `--dong`: 동 필터
 - `--theme, -t`: 테마 필터
 - `--hybrid`: 하이브리드 검색 사용 (키워드 + 벡터)
-- `--min-sim`: 최소 유사도 임계값 (0.0-1.0)
+- `--smart`: 스마트 검색 사용 (기본값: True)
+- `--no-smart`: 스마트 검색 비활성화
+- `--min-sim`: 최소 유사도 임계값 (기본값: -0.3, 음수 허용)
 
 #### 검색 예시
 
 ```bash
-# 1. 위치 기반 검색
-vector-db search "홍대입구역 도보 10분" --district "마포구"
+# 1. 브랜드명 검색 (스마트 검색)
+vector-db-inha search "세븐일레븐"
+vector-db-inha search "편의점"
 
-# 2. 테마 기반 검색
-vector-db search "청년 1인 가구" --theme "청년형"
+# 2. 위치 기반 검색
+vector-db-inha search "홍대입구역 도보 10분" --district "마포구"
 
-# 3. 시설 기반 검색
-vector-db search "병원 가까운 곳"
+# 3. 테마 기반 검색
+vector-db-inha search "청년 1인 가구" --theme "청년형"
 
-# 4. 복합 조건 검색
-vector-db search "지하철 2호선 신혼부부" --limit 15
+# 4. 시설 기반 검색
+vector-db-inha search "병원 가까운 곳"
+
+# 5. 복합 조건 검색
+vector-db-inha search "지하철 2호선 신혼부부" --limit 15
 ```
 
 ### 정보 및 통계
 
 #### `stats` - 데이터베이스 통계
 ```bash
-vector-db stats
+vector-db-inha stats
 ```
 
 **출력 예시:**
@@ -170,12 +184,7 @@ Top Themes:
 
 #### `info` - 데이터베이스 정보
 ```bash
-vector-db info
-```
-
-#### `preview` - 임베딩 미리보기
-```bash
-vector-db preview --samples 3
+vector-db-inha info
 ```
 
 ## 🧠 하이브리드 검색 시스템
