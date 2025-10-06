@@ -1,14 +1,21 @@
 """
-Vector Database Service (Inha) - 간소화된 4파일 구조
+Vector Database Service (Inha) - All-in-One ChromaDB
 """
 
-from .vector_client import VectorClient
-from .vector_config import vector_config
-from .vector_embeddings import KoreanEmbedder
-from .vector_collections import HousingCollection
+from .chromadb import (
+    HousingVectorDB,
+    VectorConfig,
+    KoreanEmbedder,
+    HousingCollection
+)
 
-__all__ = ["VectorClient", "vector_config", "KoreanEmbedder", "HousingCollection"]
+__all__ = [
+    "HousingVectorDB",
+    "VectorConfig", 
+    "KoreanEmbedder",
+    "HousingCollection"
+]
 
 # 버전 정보
-__version__ = "2.1.0"
-__description__ = "Simplified 4-file Vector Database Service for Housing Search"
+__version__ = "3.0.0"
+__description__ = "All-in-One Housing Vector Database with Text Chunking"
