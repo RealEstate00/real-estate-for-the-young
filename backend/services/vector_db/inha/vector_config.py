@@ -31,7 +31,7 @@ class VectorConfig:
         self.default_csv_path = "backend/data/raw/for_vectorDB/housing_vector_data.csv"
         
         # 검색 설정
-        self.default_similarity_threshold = -0.3
+        self.default_similarity_threshold = 0.1
         self.default_n_results = 10
         
         # 테마 키워드
