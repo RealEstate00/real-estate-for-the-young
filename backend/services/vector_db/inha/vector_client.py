@@ -18,13 +18,17 @@ logger = logging.getLogger(__name__)
 
 
 class VectorClient:
-    """통합 벡터 데이터베이스 클라이언트"""
+    """통합 벡터 데이터베이스 클라이언트""" 
+    # VectorClient()를 실행하면 자동으로 필요한 부품을 다 장착하는 것
     
-    def __init__(self):
-        self.config = vector_config
-        self.embedder = KoreanEmbedder()
-        self.collection = HousingCollection(self.embedder)
-    
+    def __init__(self): # initial : 초기화 -. 초기 셋팅하기
+        # self. : 이 인스턴스(VectorClient 객체)안에 .~이라는 속성을 저장해주어, 클래스 밖에서도 접근 가능하게 함..!
+        # self가 없으면 클래스 밖에서 접근 불가. self.이 없는 변수는 함수 끝나면 사라짐
+        self.config = vector_config # 설정값 불러오기
+        # VectorClient 자신(client 객체) 안에 config라는 속성을 만들어 넣은 것
+        self.embedder = KoreanEmbedder() # 한국어->숫자 임베딩 모델 불러오기
+        self.collection = HousingCollection(self.embedder) # 주택데이터를 저장하고 찾는 창고 관리자 불러오기
+
     def load_csv_data(self, csv_path: str = None) -> None:
         """CSV 파일에서 주택 데이터 로드"""
         csv_path = csv_path or self.config.default_csv_path
