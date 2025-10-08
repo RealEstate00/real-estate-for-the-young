@@ -12,12 +12,12 @@ from tqdm import tqdm
 
 # External dependencies
 import chromadb
-from chromadb.config import Settings
-from sentence_transformers import SentenceTransformer
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from chromadb.config import Settings # ChromaDB 설정
+from sentence_transformers import SentenceTransformer # 임베딩 모델
+from langchain.text_splitter import RecursiveCharacterTextSplitter # 문서 분할
 
 logger = logging.getLogger(__name__)
-
+logging.basicConfig(level=logging.INFO)
 
 # ============================================================================
 # 1. 설정 (Configuration)
