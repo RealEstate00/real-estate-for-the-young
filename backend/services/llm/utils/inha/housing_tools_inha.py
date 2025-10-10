@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 # ============================================================================
 
 @tool
-def search_housing(
+def search_housing(   ## Retriever 역할의 도구
     query: str,
     search_mode: Literal["diverse", "comprehensive"] = "diverse",
     max_results: int = None
@@ -36,34 +36,32 @@ def search_housing(
     Args:
         query: 검색 쿼리 (예: "강남구 청년주택", "지하철역 근처 주택")
         search_mode: 검색 모드
-            - "diverse": 다양한 옵션 탐색 (기본, MMR 사용하여 중복 제거)
+            - "diverse": 상위 결과 탐색 (기본, 유사도 높은 순)
                 사용 예: "추천해줘", "좋은 곳 알려줘", "어떤게 있어?"
-            - "comprehensive": 조건에 맞는 모든 결과 (유사도만 사용)
+            - "comprehensive": 조건에 맞는 모든 결과 (유사도 높은 순)
                 사용 예: "모두 보여줘", "전부 찾아줘", "모든 매물"
         max_results: 최대 결과 수 (None이면 모드에 따라 자동 설정)
             - diverse 모드: 기본 5개
             - comprehensive 모드: 기본 20개
 
     Returns:
-        검색된 주택 Document 리스트
+        검색된 주택 Document 리스트 (유사도 높은 순 정렬)
     """
     try:
         logger.info(f"search_housing called: query='{query}', mode={search_mode}, max={max_results}")
 
         if search_mode == "comprehensive":
-            # 조건에 맞는 모든 결과 검색
+            # 조건에 맞는 모든 결과 검색 (유사도 높은 순)
             retriever = GroqHousingRetriever(
                 k=max_results or 20,
                 use_mmr=False,
                 min_similarity=0.1
             )
         else:
-            # 다양한 옵션 탐색 (기본)
+            # 상위 결과 탐색 (유사도 높은 순, 기본)
             retriever = GroqHousingRetriever(
                 k=max_results or 5,
-                fetch_k=15,
-                use_mmr=True,
-                lambda_mult=0.9,
+                use_mmr=False,
                 min_similarity=0.1
             )
 
