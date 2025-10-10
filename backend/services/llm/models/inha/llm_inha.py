@@ -1,7 +1,7 @@
 """
 LLM 모델 설정
-- 단일 모드: Groq gemma2-9b-it
-- 하이브리드 모드: OpenAI GPT-4o-mini (Agent) + Groq gemma2-9b-it (Response)
+- 단일 모드: Groq llama-3.3-70b-versatile
+- 하이브리드 모드: OpenAI GPT-4o-mini (도구호출_정확한 추론을 바탕으로 함) + Groq llama-3.3-70b-versatile (답변생성_빠르고 저렴하지만 적당한 품질임)
 """
 
 import os
@@ -17,10 +17,10 @@ groq_api_key = os.getenv("GROQ_API_KEY")
 openai_api_key = os.getenv("OPENAI_API_KEY")
 
 # 하이브리드 모드 설정
-USE_HYBRID = os.getenv("USE_HYBRID_LLM", "False").lower() == "true"
+USE_HYBRID = os.getenv("USE_HYBRID_LLM", "false").lower() == "true"
 AGENT_MODEL = os.getenv("AGENT_MODEL", "gpt-4o-mini")  # OpenAI 기본값
 AGENT_PROVIDER = os.getenv("AGENT_PROVIDER", "openai")  # openai or groq
-RESPONSE_MODEL = os.getenv("RESPONSE_MODEL", "gemma2-9b-it")
+RESPONSE_MODEL = os.getenv("RESPONSE_MODEL", "llama-3.3-70b-versatile")
 
 # LLM 모델 설정
 print("LLM 모델 연결 중...")
@@ -47,7 +47,7 @@ if USE_HYBRID and AGENT_PROVIDER == "openai":
 try:
     # 기본 LLM (단일 모드용 - Groq)
     llm = ChatGroq(
-        model="gemma2-9b-it",
+        model="llama-3.3-70b-versatile",
         temperature=0.5,
         max_tokens=1000,
         api_key=groq_api_key
@@ -84,7 +84,7 @@ try:
         )
         print(f"  └─ Response LLM: {RESPONSE_MODEL} (Groq)")
     else:
-        print(f"⚙️  단일 LLM 모드 (gemma2-9b-it)")
+        print(f"⚙️  단일 LLM 모드 (llama-3.3-70b-versatile)")
         # 단일 모드: 모든 LLM을 기본 llm으로 설정
         agent_llm = llm
         response_llm = llm

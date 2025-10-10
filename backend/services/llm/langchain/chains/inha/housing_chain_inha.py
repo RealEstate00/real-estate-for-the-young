@@ -5,12 +5,13 @@ Agent 없이 단순 파이프라인으로 구현
 구성:
 1. Retriever: ChromaDB에서 주택 검색
 2. Prompt: 검색 결과를 포맷팅하여 LLM에 전달
-3. LLM: Groq gemma2-9b-it 모델
+3. LLM: Groq llama-3.3-70b-versatile 모델
 4. Output Parser: 문자열 파싱
 """
 
 import sys
 from pathlib import Path
+import time
 
 # 프로젝트 루트를 Python path에 추가
 project_root = Path(__file__).parent.parent.parent.parent.parent.parent
@@ -30,9 +31,12 @@ logger = logging.getLogger(__name__)
 # 1. 컴포넌트 초기화
 # =============================================================================
 
-# Retriever 생성 (k=5개 결과, 유사도 0.1 이상)
-# MMR 비활성화 - 단순 유사도 검색 사용 (MMR 에러 회피)
-retriever = GroqHousingRetriever(k=5, min_similarity=0.1, use_mmr=False)
+# Retriever 생성 (k=5개 결과, 유사도 높은 순)
+retriever = GroqHousingRetriever(
+    k=5,
+    use_mmr=False,
+    min_similarity=0.1
+)
 
 # Output Parser
 output_parser = StrOutputParser()
@@ -133,38 +137,30 @@ def stream_recommendation(query: str):
 
 if __name__ == "__main__":
     print("=" * 80)
-    print("LCEL Chain 기반 주택 추천 RAG 시스템 테스트")
+    print("LCEL Chain 기반 주택 추천 RAG 시스템 - 스트리밍 테스트")
     print("=" * 80)
     
     # 테스트 쿼리들
     test_queries = [
-        "강남구 청년주택 추천해줘",
-        "대치동 근처 좋은 주택 찾아줘",
-        "서초구에 있는 주택 보여줘"
+        # "강남구 청년주택 추천해줘",
+        # "서초구에 있는 주택 보여줘",
+        "대치동 근처 좋은 주택 찾아줘"
     ]
     
     for i, query in enumerate(test_queries, 1):
-        print(f"\n\n테스트 {i}: {query}")
+        print(f"\n\n💬 테스트 {i}: {query}")
         print("-" * 80)
         
         try:
-            # RAG Chain 실행
-            response = recommend_housing(query)
-            print(response)
+            # 스트리밍 추천
+            for chunk in stream_recommendation(query):
+                print(chunk, end="", flush=True)
+                time.sleep(0.03)
             
         except Exception as e:
             print(f"❌ 에러 발생: {e}")
         
-        print("-" * 80)
+        print("\n" + "-" * 80)
     
-    print("\n\n✅ 테스트 완료!")
-    print("\n💡 스트리밍 테스트:")
-    print("-" * 80)
-    
-    # 스트리밍 테스트
-    for chunk in stream_recommendation("강남구 청년주택"):
-        print(chunk, end="", flush=True)
-    
-    print("\n" + "-" * 80)
     print("\n✅ 모든 테스트 완료!")
 

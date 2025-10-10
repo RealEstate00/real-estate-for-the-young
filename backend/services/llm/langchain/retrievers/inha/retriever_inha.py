@@ -1,7 +1,12 @@
 """
 Housing Retriever - 벡터 검색 전용
-ChromaDB 기반 주택 검색 기능 제공
+ChromaDB 기반 주택 검색 기능 제공 (유사도 기반)
 
+사용처:
+- Chain 모드: housing_chain_inha.py
+- Agent 모드: housing_tools_inha.py의 search_housing 도구
+
+기본 설정: use_mmr=False (유사도만 사용, 권장)
 """
 
 import sys
@@ -23,28 +28,28 @@ logger = logging.getLogger(__name__)
 
 
 class GroqHousingRetriever(BaseRetriever):
-    """ChromaDB 기반 주택 검색 Retriever (MMR 우선)"""
+    """ChromaDB 기반 주택 검색 Retriever (유사도 기반)"""
     
     # Pydantic v2 필드 정의
     k: int = Field(default=5, description="최종 반환할 문서 개수")
-    fetch_k: int = Field(default=15, description="MMR 계산을 위해 가져올 초기 문서 개수")
-    lambda_mult: float = Field(default=0.9, description="유사도와 다양성 간 균형")
+    fetch_k: int = Field(default=15, description="초기 검색 문서 개수 (use_mmr=True일 때만 사용)")
+    lambda_mult: float = Field(default=0.9, description="유사도와 다양성 간 균형 (use_mmr=True일 때만 사용)")
     min_similarity: float = Field(default=0.1, description="최소 유사도 임계값")
-    use_mmr: bool = Field(default=True, description="MMR 사용 여부")
+    use_mmr: bool = Field(default=False, description="MMR 사용 여부 (기본: False, 유사도만 사용)")
     
     # 내부 객체들 (Pydantic 필드가 아님)
     config: Any = Field(default=None, exclude=True)
     embedder: Any = Field(default=None, exclude=True)
     collection: Any = Field(default=None, exclude=True)
 
-    def __init__(self, k: int = 5, fetch_k: int = 15, lambda_mult: float = 0.9, min_similarity: float = 0.1, use_mmr: bool = True, **kwargs):
+    def __init__(self, k: int = 5, fetch_k: int = 15, lambda_mult: float = 0.9, min_similarity: float = 0.1, use_mmr: bool = False, **kwargs):
         """
         Args:
             k: 최종 반환할 문서 개수
-            fetch_k: MMR 계산을 위해 가져올 초기 문서 개수 (k보다 크게 설정)
-            lambda_mult: 유사도와 다양성 간 균형 (0~1, 1에 가까울수록 유사도 우선)
+            fetch_k: 초기 검색 문서 개수 (use_mmr=True일 때만 사용)
+            lambda_mult: 유사도와 다양성 간 균형 (0~1, use_mmr=True일 때만 사용)
             min_similarity: 최소 유사도 임계값
-            use_mmr: True면 MMR 사용 (다양성), False면 유사도만 사용 (전체 검색)
+            use_mmr: False면 유사도만 사용 (기본, 권장), True면 MMR 사용 (다양성 우선)
         """
         super().__init__(k=k, fetch_k=fetch_k, lambda_mult=lambda_mult, min_similarity=min_similarity, use_mmr=use_mmr, **kwargs)
         
@@ -140,7 +145,8 @@ class GroqHousingRetriever(BaseRetriever):
         """MMR 알고리즘 구현 (문서 간 유사도 계산)"""
         import numpy as np
 
-        if not embedding_list or len(embedding_list) == 0:
+        # numpy 배열 체크 (len() 사용)
+        if embedding_list is None or len(embedding_list) == 0:
             # embeddings가 없으면 유사도 정렬만
             similarities = [1 - (d / 2) for d in distances]
             candidates = [
@@ -183,12 +189,12 @@ class GroqHousingRetriever(BaseRetriever):
                     current_embedding = embeddings[idx]
 
                     similarities_to_selected = np.dot(selected_embeddings, current_embedding)
-                    max_sim_to_selected = np.max(similarities_to_selected)
+                    max_sim_to_selected = float(np.max(similarities_to_selected))
                 else:
-                    max_sim_to_selected = 0
+                    max_sim_to_selected = 0.0
 
                 # MMR 점수 = λ × (쿼리 유사도) - (1-λ) × (선택된 문서와의 유사도)
-                mmr_score = self.lambda_mult * query_sim - (1 - self.lambda_mult) * max_sim_to_selected
+                mmr_score = float(self.lambda_mult * query_sim - (1 - self.lambda_mult) * max_sim_to_selected)
 
                 if mmr_score > best_score:
                     best_score = mmr_score
@@ -242,15 +248,21 @@ class GroqHousingRetriever(BaseRetriever):
 """
 GroqHousingRetriever 사용 예시:
 
-# 1. 다양한 옵션 탐색 (MMR 사용)
-retriever = GroqHousingRetriever(k=5, use_mmr=True, lambda_mult=0.9)
-docs = retriever.get_relevant_documents("강남구 청년주택 추천")
+# 1. 기본 사용 (유사도 높은 순, 권장)
+retriever = GroqHousingRetriever(k=5, use_mmr=False)
+docs = retriever.get_relevant_documents("강남구 청년주택")
 
-# 2. 조건에 맞는 모든 결과 (유사도만)
+# 2. 많은 결과 검색 (유사도 높은 순)
 retriever = GroqHousingRetriever(k=20, use_mmr=False)
 docs = retriever.get_relevant_documents("강남구 청년주택")
 
-# 주의: search_housing tool은 backend/services/llm/utils/inha/housing_tools_inha.py로 이동되었습니다.
+# 3. MMR 사용 (다양성 우선, 선택적)
+retriever = GroqHousingRetriever(k=5, fetch_k=15, use_mmr=True, lambda_mult=0.9)
+docs = retriever.get_relevant_documents("강남구 청년주택")
+
+# 참고: 
+# - 주택 검색에는 유사도만 사용(use_mmr=False)을 권장합니다
+# - Agent용 search_housing tool은 backend/services/llm/utils/inha/housing_tools_inha.py에 정의되어 있습니다
 """
 
 
