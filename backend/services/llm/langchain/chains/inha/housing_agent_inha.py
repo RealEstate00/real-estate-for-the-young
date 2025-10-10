@@ -12,7 +12,6 @@ sys.path.insert(0, str(project_root))
 
 from langchain.agents import create_tool_calling_agent, AgentExecutor
 from langchain_core.output_parsers import StrOutputParser
-from langchain_core.runnables import RunnableLambda
 
 from backend.services.llm.models.inha.llm_inha import agent_llm, response_llm, USE_HYBRID
 from backend.services.llm.prompts.inha.prompt_inha import agent_prompt, rag_prompt
@@ -83,3 +82,36 @@ def housing_assistant(query: str, use_hybrid: bool = USE_HYBRID) -> str:
         return f"죄송합니다. 검색 중 오류가 발생했습니다: {e}"
 
 
+
+
+# =============================================================================
+# 5. 테스트 코드
+# =============================================================================
+
+if __name__ == "__main__":
+    print("=" * 80)
+    print("Agent 기반 주택 추천 시스템 테스트")
+    print("=" * 80)
+    
+    # 테스트 쿼리들
+    test_queries = [
+        # "강남구 청년주택 추천해줘",
+        "서초구에 있는 주택 모두 보여줘",
+        "대치동 근처 좋은 주택 추천해줘"
+    ]
+    
+    for i, query in enumerate(test_queries, 1):
+        print(f"\n\n💬 테스트 {i}: {query}")
+        print("-" * 80)
+        
+        try:
+            # Agent 실행
+            response = housing_assistant(query)
+            print(response)
+            
+        except Exception as e:
+            print(f"❌ 에러 발생: {e}")
+        
+        print("-" * 80)
+    
+    print("\n✅ 모든 테스트 완료!")

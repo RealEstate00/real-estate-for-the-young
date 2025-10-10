@@ -10,29 +10,35 @@ from pydantic import BaseModel, Field
 
 # 개별 주택 추천 모델
 class HousingItem(BaseModel):
-    """개별 주택 정보"""
+    """개별 주택 정보 - 모든 상세 정보 포함"""
     housing_name: str = Field(description="주택명")
-    location: str = Field(description="위치 (시군구 + 동)")
-    reason: str = Field(description="추천 이유")
-    features: Optional[str] = Field(default=None, description="주요 특징")
+    address_road: str = Field(description="도로명주소")
+    address_jibun: Optional[str] = Field(default=None, description="지번주소")
+    district: str = Field(description="시군구")
+    dong: str = Field(description="동명")
+    subway: Optional[str] = Field(default=None, description="가까운 지하철역")
+    theme: Optional[str] = Field(default=None, description="테마 (청년, 신혼, 육아 등)")
+    requirements: Optional[str] = Field(default=None, description="자격요건")
+    nearby_facilities: Optional[str] = Field(default=None, description="주변 편의시설 (마트, 병원, 학교 등)")
+    reason: str = Field(description="추천 이유 - 사용자 조건에 맞는 이유 설명")
 
 
 # 전체 추천 응답 모델
 class HousingRecommendation(BaseModel):
     """주택 추천 응답 구조"""
     understanding: str = Field(
-        description="사용자 상황 이해 - 사용자가 찾는 주택의 조건을 간단히 요약"
+        description="사용자 상황 이해 - 사용자가 찾는 주택의 조건을 한 문장으로 요약"
     )
     recommendations: List[HousingItem] = Field(
-        description="추천 주택 목록 (최대 3개)",
-        max_items=3
+        description="추천 주택 목록 - 검색된 주택의 모든 정보 포함 (최대 5개)",
+        max_items=5
     )
-    additional_info: str = Field(
-        description="추가 정보 - 교통, 편의시설, 신청 방법 등"
+    summary: str = Field(
+        description="전체 요약 - 추천 주택들의 공통점이나 특징을 간략히 정리"
     )
-    confidence: Optional[str] = Field(
-        default="검색된 정보 기반",
-        description="답변의 신뢰도 또는 출처"
+    additional_tips: Optional[str] = Field(
+        default=None,
+        description="추가 팁 - 신청 방법, 주의사항, 문의처 등"
     )
 
 
@@ -61,13 +67,19 @@ def test_parser():
     "recommendations": [
         {
             "housing_name": "역삼 청년주택",
-            "location": "강남구 역삼동",
-            "reason": "지하철 2호선 강남역에서 도보 5분으로 교통이 편리합니다",
-            "features": "청년 특화 주택, 현대적 시설"
+            "address_road": "서울특별시 강남구 테헤란로 123",
+            "address_jibun": "서울특별시 강남구 역삼동 456-78",
+            "district": "강남구",
+            "dong": "역삼동",
+            "subway": "2호선 강남역",
+            "theme": "청년",
+            "requirements": "만 19-39세 무주택자",
+            "nearby_facilities": "마트: 이마트, 병원: 강남세브란스병원, 학교: 역삼초등학교",
+            "reason": "지하철 2호선 강남역에서 도보 5분으로 교통이 편리하고, 청년 특화 주택으로 다양한 커뮤니티 프로그램이 있습니다"
         }
     ],
-    "additional_info": "지하철 2호선 강남역 근처로 교통이 매우 편리하며, 주변에 다양한 편의시설이 있습니다. 자세한 신청 자격은 공식 홈페이지를 참고하세요.",
-    "confidence": "검색된 정보 기반"
+    "summary": "강남역 인근의 교통 편리한 청년 주택입니다.",
+    "additional_tips": "신청은 공식 홈페이지에서 가능하며, 소득 제한이 있을 수 있습니다."
 }"""
     
     try:
@@ -78,11 +90,17 @@ def test_parser():
         print(f"Understanding: {parsed.understanding}")
         print(f"\nRecommendations ({len(parsed.recommendations)}):")
         for i, rec in enumerate(parsed.recommendations, 1):
-            print(f"  {i}. {rec.housing_name}")
-            print(f"     위치: {rec.location}")
-            print(f"     이유: {rec.reason}")
-        print(f"\nAdditional Info: {parsed.additional_info}")
-        print(f"Confidence: {parsed.confidence}")
+            print(f"\n  {i}. {rec.housing_name}")
+            print(f"     📍 주소: {rec.address_road}")
+            print(f"     🏘️  지역: {rec.district} {rec.dong}")
+            print(f"     🚇 지하철: {rec.subway or 'N/A'}")
+            print(f"     🏷️  테마: {rec.theme or 'N/A'}")
+            print(f"     ✅ 자격요건: {rec.requirements or 'N/A'}")
+            print(f"     🏪 주변시설: {rec.nearby_facilities or 'N/A'}")
+            print(f"     💡 추천이유: {rec.reason}")
+        print(f"\n📊 전체 요약: {parsed.summary}")
+        if parsed.additional_tips:
+            print(f"💬 추가 팁: {parsed.additional_tips}")
         print("=" * 80)
         return True
     except Exception as e:
