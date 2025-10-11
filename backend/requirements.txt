@@ -70,6 +70,9 @@ greenlet>=3.1; python_version < "3.13"          # SQLAlchemy sync-async aid (ski
 langchain>=0.3.0
 langchain-community>=0.3.0
 langchain-core>=0.3.0
+langchain-ollama>=0.2.0
+langchain-openai>=0.2.0 
+
 
 # Chroma DB
 chromadb>=0.5.0  # 최신 버전으로 업데이트
