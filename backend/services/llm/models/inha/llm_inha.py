@@ -15,7 +15,7 @@ from transformers import pipeline
 load_dotenv()
 
 # 기본llm 모드 설정
-FORCE_LLM_PROVIDER = os.getenv("FORCE_LLM_PROVIDER", "groq")  # groq, huggingface, openai 등 .env파일에서 설정하면 됨
+FORCE_LLM_PROVIDER = os.getenv("FORCE_LLM_PROVIDER", "openai")  # groq, huggingface, openai 등 .env파일에서 설정하면 됨
 
 # 하이브리드 모드 설정
 USE_HYBRID = os.getenv("USE_HYBRID_LLM", "false").lower() == "true"
