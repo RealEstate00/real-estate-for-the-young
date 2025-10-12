@@ -109,23 +109,50 @@ rag_chain = (
 # 4. 편의 함수
 # =============================================================================
 
-def recommend_housing(query: str) -> str:
-    """주택 추천 실행"""
+def recommend_housing(query: str, memory=None) -> str:
+    """주택 추천 실행
+    
+    Args:
+        query: 사용자 질문
+        memory: ConversationSummaryBufferMemory 객체 (대화 맥락 관리)
+    """
     try:
         logger.info(f"Housing recommendation for: '{query}'")
         response = rag_chain.invoke(query)
+        
+        # 메모리에 대화 저장
+        if memory:
+            memory.save_context({"input": query}, {"output": response})
+            logger.info("Conversation saved to memory")
+        
         return response
     except Exception as e:
         logger.error(f"Recommendation failed: {e}")
         return f"죄송합니다. 추천 중 오류가 발생했습니다: {e}"
 
 
-def stream_recommendation(query: str):
-    """스트리밍 주택 추천"""
+def stream_recommendation(query: str, memory=None):
+    """스트리밍 주택 추천
+    
+    Args:
+        query: 사용자 질문
+        memory: ConversationSummaryBufferMemory 객체 (대화 맥락 관리)
+    """
     try:
         logger.info(f"Streaming recommendation for: '{query}'")
+        
+        # 스트리밍 응답을 모아서 메모리에 저장하기 위해
+        full_response = ""
+        
         for chunk in rag_chain.stream(query):
+            full_response += chunk
             yield chunk
+        
+        # 메모리에 대화 저장
+        if memory:
+            memory.save_context({"input": query}, {"output": full_response})
+            logger.info("Conversation saved to memory")
+            
     except Exception as e:
         logger.error(f"Streaming failed: {e}")
         yield f"오류: {e}"

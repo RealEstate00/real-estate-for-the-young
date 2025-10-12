@@ -30,47 +30,90 @@ tools = [search_housing]
 
 # Agent 생성 (도구 호출용)
 agent = create_tool_calling_agent(agent_llm, tools, agent_prompt)
-agent_executor = AgentExecutor(
-    agent=agent,
-    tools=tools,
-    verbose=True,
-    handle_parsing_errors=True,
-    max_iterations=5
-)
 
 
 # ============================================================================
 # 메인 함수
 # ============================================================================
 
-def housing_assistant(query: str, use_hybrid: bool = USE_HYBRID) -> str:
+def is_tool_related_query(query: str) -> bool:
+    """
+    질문이 도구 사용이 필요한 주택 검색 관련 질문인지 판단
+    
+    Args:
+        query: 사용자 질문
+        
+    Returns:
+        bool: 도구 사용 필요 여부
+    """
+    # 주택 검색 관련 키워드
+    housing_keywords = [
+        "주택", "아파트", "원룸", "투룸", "쓰리룸", "오피스텔", "빌라", "단독주택",
+        "청년주택", "임대주택", "전세", "월세", "매매", "분양",
+        "서울", "강남", "강북", "서초", "송파", "마포", "영등포", "용산", "성동", "광진",
+        "강동", "송파", "강서", "양천", "구로", "금천", "관악", "서대문", "은평", "노원", "도봉",
+        "추천", "찾아", "보여", "검색", "모두", "전부", "어디", "있어", "없어"
+    ]
+    
+    query_lower = query.lower()
+    
+    # 주택 검색 관련 키워드가 있으면 도구 사용, 없으면 일반 대화
+    return any(keyword in query_lower for keyword in housing_keywords)
+
+
+def housing_assistant(query: str, memory=None, use_hybrid: bool = USE_HYBRID) -> str:
     """
     주택 검색 어시스턴트
 
     Args:
         query: 사용자 질문
+        memory: ConversationSummaryBufferMemory 객체 (대화 맥락 관리)
         use_hybrid: 하이브리드 모드 사용 여부
 
     Returns:
         답변 텍스트
     """
     try:
+        # AgentExecutor를 메모리와 함께 생성
+        agent_executor = AgentExecutor(
+            agent=agent,
+            tools=tools,
+            memory=memory,  # 메모리 통합
+            verbose=True,
+            handle_parsing_errors=True,
+            max_iterations=2  # 토큰 절약을 위해 2회로 제한
+        )
+        
         if use_hybrid:
-            # Phase 1: Agent LLM이 도구 실행
-            logger.info(f"[Hybrid Mode] Agent LLM 실행: {query}")
-            search_results = agent_executor.invoke({"input": query})
+            # 하이브리드 모드: 질문 유형에 따라 다른 처리
+            if is_tool_related_query(query):
+                # Phase 1: Agent LLM이 도구 실행 (주택 검색 관련)
+                logger.info(f"[Hybrid Mode] Tool 관련 질문 - Agent LLM 실행: {query}")
+                search_results = agent_executor.invoke({"input": query})
 
-            # Phase 2: Response LLM이 최종 답변 생성
-            logger.info("[Hybrid Mode] Response LLM 답변 생성")
-            final_response = (
-                rag_prompt
-                | response_llm
-                | StrOutputParser()
-            ).invoke({
-                "context": search_results["output"],
-                "query": query
-            })
-            return final_response
+                # Phase 2: Response LLM이 최종 답변 생성
+                logger.info("[Hybrid Mode] Response LLM 답변 생성 (도구 결과 기반)")
+                final_response = (
+                    rag_prompt
+                    | response_llm
+                    | StrOutputParser()
+                ).invoke({
+                    "context": search_results["output"],
+                    "query": query
+                })
+                return final_response
+            else:
+                # 일반 대화: Response LLM만 사용 (도구 사용 안함)
+                logger.info(f"[Hybrid Mode] 일반 대화 - Response LLM만 실행: {query}")
+                simple_response = (
+                    rag_prompt
+                    | response_llm
+                    | StrOutputParser()
+                ).invoke({
+                    "context": "",  # 빈 컨텍스트 (검색 결과 없음)
+                    "query": query
+                })
+                return simple_response
         else:
             # 단일 LLM 모드 (기본)
             logger.info(f"[Single LLM Mode] Agent 실행: {query}")
@@ -85,7 +128,7 @@ def housing_assistant(query: str, use_hybrid: bool = USE_HYBRID) -> str:
 
 
 # =============================================================================
-# 5. 테스트 코드
+# 테스트 코드
 # =============================================================================
 
 if __name__ == "__main__":
