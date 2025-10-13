@@ -1,24 +1,19 @@
-// frontend/src/components/ChatInterface.tsx
-/**
- * AI Chat Interface Component
- * LLM과 대화하는 채팅 인터페이스
- */
-
 import React, { useState, useRef, useEffect } from "react";
-import { chat, ChatMessage, SourceInfo, clearMemory } from "../services/llmApi";
+import { Send, RotateCcw, Home, FileText } from "lucide-react";
+import { chat, clearMemory, ChatMessage, SourceInfo } from "../services/llmApi";
 
 interface Message extends ChatMessage {
-  sources?: SourceInfo[];
   timestamp: Date;
+  sources?: SourceInfo[];
 }
 
-export const ChatInterface: React.FC = () => {
+export default function ChatInterface() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Auto-scroll to bottom
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
@@ -37,8 +32,16 @@ export const ChatInterface: React.FC = () => {
     setIsLoading(true);
 
     try {
+      // API 호출을 위한 메시지 형식 변환
+      const apiMessages: ChatMessage[] = [...messages, userMessage].map(
+        (msg) => ({
+          role: msg.role,
+          content: msg.content,
+        })
+      );
+
       const response = await chat({
-        messages: [...messages, userMessage],
+        messages: apiMessages,
         model_type: "ollama",
       });
 
@@ -54,7 +57,8 @@ export const ChatInterface: React.FC = () => {
       console.error("Chat error:", error);
       const errorMessage: Message = {
         role: "assistant",
-        content: "죄송합니다. 응답 중 오류가 발생했습니다.",
+        content:
+          "죄송합니다. 응답 중 오류가 발생했습니다. 서버 연결을 확인해주세요.",
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, errorMessage]);
@@ -64,15 +68,19 @@ export const ChatInterface: React.FC = () => {
   };
 
   const handleClearChat = async () => {
-    try {
-      await clearMemory("ollama");
-      setMessages([]);
-    } catch (error) {
-      console.error("Failed to clear chat:", error);
+    if (window.confirm("대화 내역을 모두 삭제하시겠습니까?")) {
+      try {
+        await clearMemory("ollama");
+        setMessages([]);
+      } catch (error) {
+        console.error("Failed to clear chat:", error);
+        // API 호출 실패해도 로컬 메시지는 초기화
+        setMessages([]);
+      }
     }
   };
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
+  const handleKeyPress = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSend();
@@ -80,99 +88,179 @@ export const ChatInterface: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col h-screen max-w-4xl mx-auto p-4">
+    <div className="flex flex-col h-screen bg-gray-50">
       {/* Header */}
-      <div className="flex justify-between items-center mb-4 pb-4 border-b">
-        <h1 className="text-2xl font-bold">주택 AI 상담</h1>
-        <button
-          onClick={handleClearChat}
-          className="px-4 py-2 text-sm bg-gray-200 hover:bg-gray-300 rounded"
-        >
-          대화 초기화
-        </button>
-      </div>
-
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto mb-4 space-y-4">
-        {messages.length === 0 && (
-          <div className="text-center text-gray-500 mt-8">
-            <p className="text-lg mb-2">무엇을 도와드릴까요?</p>
-            <p className="text-sm">예: "강남역 근처 청년주택 알려줘"</p>
+      <header className="bg-white border-b border-gray-200 shadow-sm">
+        <div className="max-w-4xl mx-auto px-4 py-4 flex justify-between items-center">
+          <div className="flex items-center gap-3">
+            <Home className="w-6 h-6 text-blue-600" />
+            <h1 className="text-xl font-bold text-gray-800">
+              청년을 위한 서울 주택 안내
+            </h1>
           </div>
-        )}
-
-        {messages.map((message, index) => (
-          <div
-            key={index}
-            className={`flex ${
-              message.role === "user" ? "justify-end" : "justify-start"
-            }`}
+          <button
+            onClick={handleClearChat}
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+            title="대화 초기화"
           >
-            <div
-              className={`max-w-[70%] rounded-lg p-4 ${
-                message.role === "user"
-                  ? "bg-blue-500 text-white"
-                  : "bg-gray-100 text-gray-900"
-              }`}
-            >
-              <p className="whitespace-pre-wrap">{message.content}</p>
+            <RotateCcw className="w-4 h-4" />
+            대화 초기화
+          </button>
+        </div>
+      </header>
 
-              {/* Sources */}
-              {message.sources && message.sources.length > 0 && (
-                <div className="mt-3 pt-3 border-t border-gray-300">
-                  <p className="text-xs font-semibold mb-2">참고 문서:</p>
-                  {message.sources.map((source, idx) => (
-                    <div key={idx} className="text-xs mb-1">
-                      • {source.title} ({source.district})
+      {/* Messages Container */}
+      <div className="flex-1 overflow-y-auto">
+        <div className="max-w-4xl mx-auto px-4 py-6">
+          {messages.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full text-center py-12">
+              <div className="bg-white rounded-2xl p-8 shadow-sm border border-gray-200 max-w-md">
+                <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Home className="w-8 h-8 text-blue-600" />
+                </div>
+                <h2 className="text-xl font-semibold text-gray-800 mb-2">
+                  무엇을 도와드릴까요?
+                </h2>
+                <p className="text-sm text-gray-600 mb-4">
+                  서울시 청년 주택에 대해 궁금한 점을 물어보세요
+                </p>
+                <div className="bg-gray-50 rounded-lg p-3 text-left">
+                  <p className="text-xs font-semibold text-gray-700 mb-2">
+                    예시 질문:
+                  </p>
+                  <ul className="text-xs text-gray-600 space-y-1">
+                    <li>• 강남역 근처 청년주택 알려줘</li>
+                    <li>• 대학가 근처의 집을 찾고 있어</li>
+                    <li>• 홍대 근처에 있는 주택은?</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {messages.map((message, index) => (
+                <div
+                  key={index}
+                  className={`flex ${
+                    message.role === "user" ? "justify-end" : "justify-start"
+                  }`}
+                >
+                  <div
+                    className={`max-w-[75%] rounded-2xl px-4 py-3 shadow-sm ${
+                      message.role === "user"
+                        ? "bg-blue-600 text-white"
+                        : "bg-white text-gray-800 border border-gray-200"
+                    }`}
+                  >
+                    <p className="text-sm whitespace-pre-wrap leading-relaxed text-left">
+                      {message.content}
+                    </p>
+
+                    {message.sources && message.sources.length > 0 && (
+                      <div className="mt-3 pt-3 border-t border-gray-200">
+                        <div className="flex items-center gap-1 mb-2 text-left">
+                          <FileText className="w-3 h-3 text-gray-500" />
+                          <p className="text-xs font-semibold text-gray-600">
+                            참고 문서:
+                          </p>
+                        </div>
+                        <div className="space-y-1">
+                          {message.sources.map((source, idx) => (
+                            <div
+                              key={idx}
+                              className="text-xs text-gray-600 bg-gray-50 rounded px-2 py-1 text-left"
+                            >
+                              • {source.title} ({source.district})
+                              {source.address && (
+                                <div className="text-xs text-gray-500 mt-1 text-left">
+                                  {source.address}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    <p
+                      className={`text-xs mt-2 text-left ${
+                        message.role === "user"
+                          ? "text-blue-200"
+                          : "text-gray-500"
+                      }`}
+                    >
+                      {message.timestamp.toLocaleTimeString("ko-KR", {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </p>
+                  </div>
+                </div>
+              ))}
+
+              {isLoading && (
+                <div className="flex justify-start">
+                  <div className="bg-white border border-gray-200 rounded-2xl px-4 py-3 shadow-sm">
+                    <div className="flex items-center gap-2">
+                      <div className="flex gap-1">
+                        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
+                        <div
+                          className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
+                          style={{ animationDelay: "0.1s" }}
+                        ></div>
+                        <div
+                          className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
+                          style={{ animationDelay: "0.2s" }}
+                        ></div>
+                      </div>
+                      <span className="text-xs text-gray-500 text-left">
+                        답변 생성 중...
+                      </span>
                     </div>
-                  ))}
+                  </div>
                 </div>
               )}
 
-              <p className="text-xs mt-2 opacity-70">
-                {message.timestamp.toLocaleTimeString("ko-KR", {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })}
-              </p>
+              <div ref={messagesEndRef} />
             </div>
-          </div>
-        ))}
-
-        {isLoading && (
-          <div className="flex justify-start">
-            <div className="bg-gray-100 rounded-lg p-4">
-              <div className="flex space-x-2">
-                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
-                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce delay-100"></div>
-                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce delay-200"></div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        <div ref={messagesEndRef} />
+          )}
+        </div>
       </div>
 
-      {/* Input */}
-      <div className="flex gap-2">
-        <textarea
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyPress={handleKeyPress}
-          placeholder="메시지를 입력하세요..."
-          className="flex-1 p-3 border border-gray-300 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
-          rows={2}
-          disabled={isLoading}
-        />
-        <button
-          onClick={handleSend}
-          disabled={isLoading || !input.trim()}
-          className="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed"
-        >
-          전송
-        </button>
+      {/* Input Area */}
+      <div className="bg-white border-t border-gray-200 shadow-lg">
+        <div className="max-w-4xl mx-auto px-4 py-4">
+          <div className="flex gap-3">
+            <div className="flex-1 relative">
+              <textarea
+                ref={textareaRef}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyPress={handleKeyPress}
+                placeholder="메시지를 입력하세요..."
+                className="w-full px-4 py-3 pr-12 border border-gray-300 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                rows={2}
+                disabled={isLoading}
+                maxLength={1000}
+              />
+              <div className="absolute bottom-2 right-2 text-xs text-gray-400">
+                {input.length}/1000
+              </div>
+            </div>
+            <button
+              onClick={handleSend}
+              disabled={isLoading || !input.trim()}
+              className="px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex items-center gap-2 font-medium shadow-sm"
+            >
+              <Send className="w-4 h-4" />
+              전송
+            </button>
+          </div>
+          <p className="text-xs text-gray-500 mt-2 text-center">
+            Enter로 전송 • Shift+Enter로 줄바꿈
+          </p>
+        </div>
       </div>
     </div>
   );
-};
+}
