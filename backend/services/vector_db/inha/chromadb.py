@@ -38,13 +38,13 @@ class VectorConfig:
         self.project_root = current_file.parent.parent.parent.parent.parent
         
         # ChromaDB 설정 (절대 경로)
-        self.persist_directory = self.project_root / "backend" / "data" / "chroma_db" / "inha"
+        self.persist_directory = self.project_root / "backend" / "data" / "vector_db" / "chroma"
         
         # 임베딩 모델 설정
         self.embedding_model = "jhgan/ko-sbert-nli"
         
         # 컬렉션 설정
-        self.housing_collection_name = "housing_embeddings"
+        self.housing_collection_name = "housing_data"
         
         # 성능 설정
         self.batch_size = 32
