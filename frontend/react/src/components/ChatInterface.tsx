@@ -12,6 +12,21 @@ interface Message extends ChatMessage {
   sources?: SourceInfo[];
 }
 
+// 마크다운 볼드 처리 함수
+const formatMessage = (text: string) => {
+  return text
+    .replace(
+      /\*\*(\d+)\. \[(.*?)\]\*\*/g,
+      '<h3 class="text-xl font-bold text-gray-900 mb-3 mt-6">$1. [$2]</h3>'
+    )
+    .replace(
+      /\| \*\*(.*?)\*\* \|/g,
+      '<div class="font-bold text-gray-800 mt-4 mb-2 text-base">| $1 |</div>'
+    )
+    .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
+    .replace(/\n/g, "<br />");
+};
+
 export default function ChatInterface() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -42,7 +57,7 @@ export default function ChatInterface() {
 
       const aiMessage: Message = {
         role: "assistant",
-        content: response.message,
+        content: response.answer || response.message,
         sources: response.sources,
         timestamp: new Date(),
       };
@@ -147,9 +162,12 @@ export default function ChatInterface() {
                         : "bg-white text-gray-800 border border-gray-200"
                     }`}
                   >
-                    <p className="text-sm whitespace-pre-wrap leading-relaxed text-left">
-                      {message.content}
-                    </p>
+                    <div
+                      className="text-sm leading-relaxed text-left"
+                      dangerouslySetInnerHTML={{
+                        __html: formatMessage(message.content),
+                      }}
+                    />
 
                     {message.sources && message.sources.length > 0 && (
                       <div className="mt-3 pt-3 border-t border-gray-200">

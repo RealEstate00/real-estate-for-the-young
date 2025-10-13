@@ -1,308 +1,140 @@
-# Real Estate for the Young
+# 🏠 Real Estate for the Young
 
-서울시 주택 관련 정보를 수집하고 분석하는 데이터 수집 및 관리 시스템입니다.
-
-## 📋 시스템 요구사항
-
-- **Python**: 3.12+ (권장: 3.12)
-- **OS**: macOS, Linux, Windows
-- **데이터베이스**: PostgreSQL (선택사항)
+청년을 위한 서울시 주택 정보 검색 및 추천 시스템
 
 ## 🚀 빠른 시작
 
-### 1. 저장소 클론 및 환경 설정
+### 1. 환경 설정
 
 ```bash
-# 저장소 클론
-git clone <repository-url>
-cd real-estate-for-the-young
-
-# uv 설치 (아직 설치하지 않은 경우)
-# macOS/Linux:
-curl -LsSf https://astral.sh/uv/install.sh | sh
-# Windows (PowerShell):
-powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
-
-# 가상환경 생성 및 패키지 설치
-uv venv --python 3.12
-source .venv/bin/activate  # macOS/Linux
-# Windows: .venv\Scripts\Activate.ps1
-uv pip install -e .
-
-# Playwright 브라우저 설치 (크롤링용)
-playwright install chromium
+# 의존성 설치 및 환경 설정
+python setup.py
 ```
 
-### 2. 데이터베이스 설정 (선택사항)
+### 2. API 키 설정
+
+`.env` 파일에서 다음 API 키를 설정하세요:
 
 ```bash
-# PostgreSQL 설정 후
-data-db create    # 데이터베이스 테이블 생성
-data-db test      # 연결 테스트
+GROQ_API_KEY=your_groq_api_key_here  # 필수
+OPENAI_API_KEY=your_openai_api_key_here  # 선택사항
 ```
 
-### 3. 데이터 수집 및 로드
+### 3. 개발 서버 실행
 
 ```bash
-# 주택 데이터 크롤링
-data-collection-housing crawl sohouse --fresh
-data-collection-housing crawl cohouse --fresh
+# 개별 실행 (권장)
+python -m backend.services.api.cli    # API 서버만 (http://localhost:8000)
+python -m frontend.react.cli          # Frontend만 (http://localhost:3000)
+python dev.py                         # API + Frontend 동시 실행
 
-# 데이터 정규화
-data-collection-housing normalized process --platform sohouse
-data-collection-housing normalized process --platform cohouse
-
-# 데이터베이스에 로드
-data-load housing
-
-# 공공시설 데이터 수집 및 로드
-data-collection-infra api collect
-data-collection-infra normalized process
-data-load infra
+# 또는 pip 설치 후
+pip install -e .
+api                                   # API 서버만
+react                                 # Frontend만
+dev                                   # API + Frontend 동시 실행
 ```
 
-## 📋 주요 명령어
+### 4. 접속
 
-### 데이터 수집 명령어
+- **Frontend**: http://localhost:3000
+- **API**: http://localhost:8000
+- **API 문서**: http://localhost:8000/docs
 
-#### `data-collection-housing` - 주택 데이터 수집
+## 📋 CLI 명령어
+
+### 데이터베이스 관리
 
 ```bash
-# 크롤링
-data-collection-housing crawl sohouse --fresh
-data-collection-housing crawl cohouse --fresh
-
-# 데이터 정규화
-data-collection-housing normalized process --platform sohouse
-data-collection-housing normalized process --platform cohouse
+python cli.py db create    # 테이블 생성
+python cli.py db drop      # 테이블 삭제
+python cli.py db reset     # 데이터베이스 초기화
+python cli.py db list      # 테이블 목록
+python cli.py db test      # 연결 테스트
 ```
 
-#### `data-collection-infra` - 공공시설 데이터 수집
+### 데이터 로드
 
 ```bash
-# API 데이터 수집
-data-collection-infra api collect
-
-# 데이터 정규화
-data-collection-infra normalized process
+python cli.py load housing  # 주택 데이터 로드
+python cli.py load infra    # 공공시설 데이터 로드
+python cli.py load rtms     # 실거래 데이터 로드
+python cli.py load all      # 모든 데이터 로드
 ```
 
-### 데이터베이스 관리 명령어
+## 🏗️ 프로젝트 구조
 
-#### `data-db` - 데이터베이스 관리
+```
+├── backend/                 # 백엔드 API 서버
+│   ├── services/
+│   │   ├── api/            # FastAPI 라우터
+│   │   ├── llm/            # LLM 관련 (LangChain)
+│   │   ├── vector_db/      # 벡터 데이터베이스
+│   │   └── data_collection/ # 데이터 수집
+│   └── data/               # 데이터 저장소
+├── frontend/               # 프론트엔드
+│   └── react/              # React 프론트엔드
+│       ├── src/
+│       │   ├── components/ # React 컴포넌트
+│       │   └── services/   # API 클라이언트
+│       ├── cli/            # React CLI
+│       └── package.json
+├── backend/services/api/cli/    # API 서버 CLI
+├── frontend/react/cli/          # React 개발 서버 CLI
+├── dev.py                 # 개발 모드 실행 스크립트
+├── setup.py               # 환경 설정 스크립트
+└── .env                   # 환경 변수 (생성 필요)
+```
+
+## 🤖 AI 기능
+
+### 지원 모델
+
+- **Groq**: Llama 3.3-70b-versatile (기본)
+- **OpenAI**: GPT-4o-mini (선택사항)
+- **HuggingFace**: 로컬 모델 (선택사항)
+
+### RAG 시스템
+
+- **벡터 검색**: ChromaDB + 한국어 임베딩
+- **Agent 모드**: 도구 사용 가능한 AI 어시스턴트
+- **하이브리드 모드**: Agent LLM + Response LLM 분리
+
+## 🔧 개발
+
+### 환경 변수
 
 ```bash
-# 데이터베이스 생성
-data-db create
+# LLM 설정
+FORCE_LLM_PROVIDER=groq
+USE_HYBRID_LLM=False
+GROQ_API_KEY=your_key
+OPENAI_API_KEY=your_key
 
-# 테이블 삭제 (주의!)
-data-db drop                    # 모든 스키마 테이블 삭제
-data-db drop housing           # housing 스키마만 삭제
-data-db drop infra             # infra 스키마만 삭제
-
-# 데이터베이스 초기화 (삭제 + 생성)
-data-db reset
-
-# 테이블 목록 확인
-data-db list
-
-# 특정 테이블 구조 확인
-data-db structure <table_name>
-
-# 데이터베이스 연결 테스트
-data-db test
+# 데이터베이스
+PG_HOST=localhost
+PG_PORT=5432
+PG_USER=postgres
+PG_PASSWORD=post1234
+PG_DB=rey
 ```
 
-### 데이터 로딩 명령어
+### API 엔드포인트
 
-#### `data-load` - 정규화된 데이터를 데이터베이스에 적재
-
-```bash
-# 주택 데이터 로드
-data-load housing
-data-load housing --data-dir /path/to/data
-
-# 실거래가 데이터 로드
-data-load rtms
-
-# 공공시설 데이터 로드
-data-load infra
-
-# 모든 데이터 통합 로드
-data-load all
-```
-
-## 🗄️ 데이터베이스 스키마
-
-### 스키마 구성
-
-- **housing**: 주택 관련 데이터 (공고, 유닛, 주소 등)
-- **infra**: 공공시설 데이터 (지하철역, 버스정류소, 공원, 학교, 병원 등)
-- **rtms**: 실거래가 및 시장 분석 데이터
-
-### 환경 변수 설정
-
-```bash
-# .env 파일 생성
-cp env.example .env
-
-# 데이터베이스 연결 정보
-export DATABASE_URL="postgresql+psycopg://postgres:post1234@localhost:5432/rey"
-export PG_USER="postgres"
-export PG_PASSWORD="post1234"
-export PG_DB="rey"
-export PG_HOST="localhost"
-export PG_PORT="5432"
-```
-
-## 📁 프로젝트 구조
-
-```
-backend/
-├── data/
-│   ├── normalized/
-│   │   ├── housing/          # 주택 정규화 데이터
-│   │   └── infra/            # 공공시설 정규화 데이터
-│   └── raw/                  # 원시 크롤링 데이터
-├── services/
-│   ├── db/                   # 데이터베이스 관리
-│   ├── data_collection/      # 데이터 수집
-│   └── loading/              # 데이터 로딩
-└── libs/                     # 공통 라이브러리
-```
-
-## 🔧 문제 해결
-
-### 명령어를 찾을 수 없는 경우
-
-```bash
-# 가상환경이 활성화되었는지 확인
-which python
-which data-db
-
-# 프로젝트 재설치
-uv pip install -e .
-```
-
-### 데이터베이스 연결 오류
-
-```bash
-# 연결 테스트
-data-db test
-
-# 환경 변수 확인
-echo $DATABASE_URL
-```
-
-### 데이터 로딩 오류
-
-```bash
-# 상세 로그와 함께 실행
-data-load housing --verbose
-data-load infra --verbose
-```
-
-## 📊 수집 가능한 데이터
-
-### 주택 데이터
-
-- 사회주택 공고 (sohouse)
-- 공동체주택 공고 (cohouse)
-- 청년주택 공고 (youth)
-
-### 공공시설 데이터
-
-- 지하철역 정보
-- 버스정류소 정보
-- 공원 정보
-- 학교 정보
-- 병원 정보
-- 약국 정보
-
-## 🚀 일반적인 워크플로우
-
-### 1. 초기 설정
-
-```bash
-# 가상환경 활성화
-source .venv/bin/activate
-
-# 데이터베이스 생성
-data-db create
-
-# 연결 테스트
-data-db test
-```
-
-### 2. 주택 데이터 수집 및 로드
-
-```bash
-# 주택 데이터 크롤링
-data-collection-housing crawl sohouse --fresh
-data-collection-housing crawl cohouse --fresh
-
-# 데이터 정규화
-data-collection-housing normalized process --platform sohouse
-data-collection-housing normalized process --platform cohouse
-
-# 데이터베이스에 로드
-data-load housing
-```
-
-### 3. 공공시설 데이터 수집 및 로드
-
-```bash
-# 공공시설 데이터 수집
-data-collection-infra api collect
-data-collection-infra normalized process
-
-# 데이터베이스에 로드
-data-load infra
-```
-
-### 4. 데이터 확인
-
-```bash
-# 테이블 현황 확인
-data-db list
-
-# 특정 테이블 구조 확인
-data-db structure addresses
-```
-
-## 📚 추가 문서
-
-- [COMMANDS.md](COMMANDS.md) - 간소화된 명령어 가이드
-- [backend/env.example](backend/env.example) - 환경 변수 예시
-
-## 🎯 개발 상태
-
-### ✅ 완료된 기능
-
-- 주택 데이터 크롤링 (사회주택, 공동체주택)
-- 데이터 정규화 및 품질 개선
-- PostgreSQL 데이터베이스 통합
-- 공공시설 데이터 수집 (서울시 API)
-- CLI 명령어 체계 구축
-
-### 🔄 진행 중
-
-- 청년주택 크롤링 개선
-- 데이터 분석 및 시각화
-- 웹 인터페이스 개발
+- `GET /api/llm/health` - 서비스 상태 확인
+- `POST /api/llm/ask` - 질문 답변 (RAG Chain)
+- `POST /api/llm/ask-agent` - 질문 답변 (Agent)
+- `POST /api/llm/chat` - 대화형 채팅
+- `POST /api/llm/clear-memory` - 대화 기록 초기화
 
 ## 📝 라이선스
 
-이 프로젝트는 MIT 라이선스 하에 배포됩니다.
+MIT License
 
-## 🤝 기여하기
+## 🤝 기여
 
 1. Fork the Project
 2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
 3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
 4. Push to the Branch (`git push origin feature/AmazingFeature`)
 5. Open a Pull Request
-
----
-
-**마지막 업데이트**: 2025-09-30
