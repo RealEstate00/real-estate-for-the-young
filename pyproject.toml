@@ -8,15 +8,37 @@ version = "0.1.0"
 description = "Real_Estate_for_the_Young"
 readme = "README.md"
 requires-python = ">=3.12,<3.14"
+dependencies = [
+    # 최소 필수 패키지만 유지
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0", 
+    "python-dotenv==1.0.0",
+    "pydantic>=2.9.0",
+    "python-multipart==0.0.6",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.2",
+    "pytest-asyncio>=0.24.0",
+    "black>=24.8.0",
+    "isort>=5.13.0",
+    "ruff>=0.6.0",
+]
 
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["backend*"]    # discover backend, backend.services, ...
+exclude = ["frontend*"]   # exclude frontend (React project)
 
 [project.scripts]
+# 개발 서버 실행 (일반 설치)
+api = "backend.services.api.cli.api_cli:main"
+dev = "dev:main"
+
+# 데이터 관리 CLI
 data-collection-housing = "backend.services.data_collection.cli.housing.__main__:main"
 data-collection-infra = "backend.services.data_collection.cli.infra.__main__:main"
 data-collection-rtms = "backend.services.data_collection.cli.rtms.__main__:main"
 data-db = "backend.services.db.cli.db_cli:main"
 data-load = "backend.services.loading.cli.load_cli:main"
-vector-db-inha = "backend.services.vector_db.inha.vector_cli:main"

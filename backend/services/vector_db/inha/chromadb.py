@@ -12,12 +12,12 @@ from tqdm import tqdm
 
 # External dependencies
 import chromadb
-from chromadb.config import Settings
-from sentence_transformers import SentenceTransformer
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from chromadb.config import Settings # ChromaDB 설정
+from sentence_transformers import SentenceTransformer # 임베딩 모델
+from langchain.text_splitter import RecursiveCharacterTextSplitter # 문서 분할
 
 logger = logging.getLogger(__name__)
-
+logging.basicConfig(level=logging.INFO)
 
 # ============================================================================
 # 1. 설정 (Configuration)
@@ -27,14 +27,24 @@ class VectorConfig:
     """벡터 데이터베이스 설정"""
     
     def __init__(self):
-        # ChromaDB 설정
-        self.persist_directory = Path("backend/data/chroma_db/inha")
+        # 프로젝트 루트 경로 설정 (Streamlit 호환)
+        import sys
+        from pathlib import Path
+        
+        # 현재 파일 위치에서 프로젝트 루트 찾기
+        current_file = Path(__file__)
+        # chromadb.py -> inha -> vector_db -> services -> backend -> project_root
+        # 실제로는 6단계 위가 아니라 5단계 위가 정확
+        self.project_root = current_file.parent.parent.parent.parent.parent
+        
+        # ChromaDB 설정 (절대 경로)
+        self.persist_directory = self.project_root / "backend" / "data" / "vector_db" / "chroma"
         
         # 임베딩 모델 설정
         self.embedding_model = "jhgan/ko-sbert-nli"
         
         # 컬렉션 설정
-        self.housing_collection_name = "housing_embeddings"
+        self.housing_collection_name = "housing_data"
         
         # 성능 설정
         self.batch_size = 32
@@ -43,8 +53,8 @@ class VectorConfig:
         # 디바이스 설정
         self.device: Optional[str] = None
         
-        # CSV 파일 경로
-        self.default_csv_path = "backend/data/raw/for_vectorDB/housing_vector_data.csv"
+        # CSV 파일 경로 (절대 경로)
+        self.default_csv_path = self.project_root / "backend" / "data" / "raw" / "for_vectorDB" / "housing_vector_data.csv"
         
         # 문서 분할 설정
         self.chunk_size = 500
