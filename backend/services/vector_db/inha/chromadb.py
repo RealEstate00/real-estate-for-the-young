@@ -15,8 +15,12 @@ import chromadb
 from chromadb.config import Settings # ChromaDB 설정
 from sentence_transformers import SentenceTransformer # 임베딩 모델
 from langchain.text_splitter import RecursiveCharacterTextSplitter # 문서 분할
+from chromadb.config import Settings # ChromaDB 설정
+from sentence_transformers import SentenceTransformer # 임베딩 모델
+from langchain.text_splitter import RecursiveCharacterTextSplitter # 문서 분할
 
 logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
 logging.basicConfig(level=logging.INFO)
 
 # ============================================================================
@@ -44,7 +48,7 @@ class VectorConfig:
         self.embedding_model = "jhgan/ko-sbert-nli"
         
         # 컬렉션 설정
-        self.housing_collection_name = "housing_embeddings"
+        self.housing_collection_name = "housing_data"
         
         # 성능 설정
         self.batch_size = 32
@@ -53,6 +57,8 @@ class VectorConfig:
         # 디바이스 설정
         self.device: Optional[str] = None
         
+        # CSV 파일 경로 (절대 경로)
+        self.default_csv_path = self.project_root / "backend" / "data" / "raw" / "for_vectorDB" / "housing_vector_data.csv"
         # CSV 파일 경로 (절대 경로)
         self.default_csv_path = self.project_root / "backend" / "data" / "raw" / "for_vectorDB" / "housing_vector_data.csv"
         
