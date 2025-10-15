@@ -143,5 +143,9 @@ langchain-openai>=0.2.0
 langchain_huggingface>=0.1.0  # HuggingFace 임베딩용
 langchain_groq>=0.1.0  # Groq LLM 통합
 groq>=0.9.0  # Groq API 클라이언트
+<<<<<<< Updated upstream
+# llama-cpp-python==0.3.16 # Windows 빌드 오류로 제거 - transformers.pipeline 사용
+>>>>>>> Stashed changes
+=======
 # llama-cpp-python==0.3.16 # Windows 빌드 오류로 제거 - transformers.pipeline 사용
 >>>>>>> Stashed changes
