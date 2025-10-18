@@ -4,23 +4,53 @@
 
 ## 🚀 빠른 시작
 
-### 1. 환경 설정
+### 1. 의존성 설치
 
 ```bash
-# 의존성 설치 및 환경 설정
-python setup.py
+# uv를 사용한 설치 (권장)
+uv sync
+
+# 또는 pip를 사용한 설치
+pip install -e .
 ```
 
-### 2. API 키 설정
-
-`.env` 파일에서 다음 API 키를 설정하세요:
+### 2. 추가 설정 (필수)
 
 ```bash
+# Playwright 브라우저 설치
+playwright install
+
+# NLTK 데이터 다운로드
+python -m nltk.downloader punkt
+
+# spaCy 모델 다운로드
+python -m spacy download en_core_web_sm
+python -m spacy download ko_core_news_sm  # 한국어 모델 (선택사항)
+
+# MeCab 설치 (macOS)
+brew install mecab mecab-ko mecab-ko-dic
+
+# MeCab 설치 (Ubuntu/Debian)
+sudo apt-get install mecab mecab-ko mecab-ko-dic
+
+# MeCab 설치 (Windows)
+# https://bitbucket.org/eunjeon/mecab-ko-dic/downloads/ 에서 다운로드
+```
+
+### 3. 환경 변수 설정
+
+`.env` 파일을 생성하고 다음 API 키를 설정하세요:
+
+```bash
+# .env 파일 생성
+cp env.example .env
+
+# API 키 설정
 GROQ_API_KEY=your_groq_api_key_here  # 필수
 OPENAI_API_KEY=your_openai_api_key_here  # 선택사항
 ```
 
-### 3. 개발 서버 실행
+### 4. 개발 서버 실행
 
 ```bash
 # 개별 실행 (권장)
@@ -28,10 +58,8 @@ python -m backend.services.api.cli    # API 서버만 (http://localhost:8000)
 python -m frontend.react.cli          # Frontend만 (http://localhost:3000)
 python dev.py                         # API + Frontend 동시 실행
 
-# 또는 pip 설치 후
-pip install -e .
+# 또는 설치 후 CLI 사용
 api                                   # API 서버만
-react                                 # Frontend만
 dev                                   # API + Frontend 동시 실행
 ```
 
@@ -82,7 +110,8 @@ python cli.py load all      # 모든 데이터 로드
 ├── backend/services/api/cli/    # API 서버 CLI
 ├── frontend/react/cli/          # React 개발 서버 CLI
 ├── dev.py                 # 개발 모드 실행 스크립트
-├── setup.py               # 환경 설정 스크립트
+├── pyproject.toml         # Python 패키지 설정
+├── env.example            # 환경 변수 예시
 └── .env                   # 환경 변수 (생성 필요)
 ```
 
