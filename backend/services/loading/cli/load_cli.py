@@ -16,8 +16,10 @@ from typing import Optional
 project_root = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(project_root))
 
-from backend.services.db.common.db_utils import test_connection
+from backend.services.db.common.db_utils import test_connection, get_engine
 from backend.services.loading.housing.housing_db_loader import HousingLoader, LoaderConfig, build_db_url
+from backend.services.rag.core import MultiModelEmbedder
+from sqlalchemy import text
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -162,6 +164,159 @@ def load_normalized_data(normalized_data_dir: str, db_url: Optional[str] = None)
     
     return housing_ok and infra_ok and rtms_ok
 
+def _create_vector_db_schema():
+    """vector_db 스키마 및 테이블 생성"""
+    logger.info("📊 vector_db 스키마 및 테이블 생성 중...")
+    try:
+        engine = get_engine()
+        with engine.connect() as conn:
+            # vector_db 스키마 생성
+            conn.execute(text("CREATE SCHEMA IF NOT EXISTS vector_db;"))
+            conn.commit()
+            logger.info("✅ vector_db 스키마 생성 완료")
+
+            # 필요한 테이블들이 존재하는지 확인
+            required_tables = [
+                'embedding_models', 'document_sources', 'document_chunks', 
+                'chunk_embeddings', 'search_logs', 'model_metrics',
+                'embeddings_e5_small', 'embeddings_kakaobank', 'embeddings_qwen3',
+                'embeddings_gemma', 'embeddings_jina_v4'
+            ]
+            
+            missing_tables = []
+            for table in required_tables:
+                result = conn.execute(text(f"""
+                    SELECT EXISTS (
+                        SELECT FROM information_schema.tables
+                        WHERE table_schema = 'vector_db'
+                        AND table_name = '{table}'
+                    )
+                """))
+                if not result.scalar():
+                    missing_tables.append(table)
+
+            if not missing_tables:
+                logger.info("✅ vector_db 테이블들이 모두 존재합니다. 건너뛰기")
+                return True
+
+            logger.info(f"📋 누락된 테이블들: {', '.join(missing_tables)}")
+            logger.info("🔧 테이블 생성 중...")
+
+            # 스키마 파일 읽기 및 실행
+            schema_file = Path("backend/services/rag/storage/schema.sql")
+            if schema_file.exists():
+                with open(schema_file, 'r', encoding='utf-8') as f:
+                    schema_sql = f.read()
+                conn.execute(text(schema_sql))
+                conn.commit()
+                logger.info("✅ vector_db 테이블 생성 완료")
+            else:
+                logger.error(f"❌ 스키마 파일을 찾을 수 없습니다: {schema_file}")
+                return False
+
+            logger.info("✅ vector_db 스키마 및 테이블 생성 완료!")
+            return True
+    except Exception as e:
+        logger.error(f"❌ vector_db 스키마 생성 실패: {e}")
+        logger.exception(e)
+        return False
+
+def _load_vector_db_data(data_dir: Path, models_to_use: list = None) -> bool:
+    """vector_db 데이터 로딩 (선택된 모델로 임베딩)
+
+    Args:
+        data_dir: 데이터 디렉토리
+        models_to_use: 사용할 모델 목록 (예: ['kakaobank', 'jina_v4'])
+                      None이면 모든 모델 사용
+    """
+    try:
+        # JSON 파일 경로 확인
+        json_file = data_dir / "structured" / "서울시_주거복지사업_pgvector_ready_clecd ..aned.json"
+
+        if not json_file.exists():
+            logger.error("❌ JSON 파일을 찾을 수 없습니다: %s", json_file)
+            return False
+
+        # 모델 선택
+        from backend.services.rag.config import EmbeddingModelType
+
+        model_mapping = {
+            'e5': EmbeddingModelType.MULTILINGUAL_E5_SMALL,
+            'kakaobank': EmbeddingModelType.KAKAOBANK_DEBERTA,
+            'qwen3': EmbeddingModelType.QWEN_EMBEDDING,
+            'gemma': EmbeddingModelType.EMBEDDING_GEMMA
+        }
+
+        if models_to_use:
+            selected_models = [model_mapping[m] for m in models_to_use if m in model_mapping]
+            logger.info("🚀 선택된 %d개 모델로 임베딩 생성 시작: %s", len(selected_models), models_to_use)
+        else:
+            selected_models = None
+            logger.info("🚀 모든 모델로 임베딩 생성 시작")
+
+        logger.info("📁 데이터 파일: %s", json_file)
+
+        # 데이터베이스 설정
+        db_config = {
+            'host': 'localhost',
+            'port': '5432',
+            'database': 'rey',
+            'user': 'postgres',
+            'password': 'post1234'
+        }
+
+        # MultiModelEmbedder 실행
+        embedder = MultiModelEmbedder(str(json_file), db_config, models_to_use=selected_models)
+        results = embedder.embed_all_models()
+        
+        # 결과 요약 출력
+        print(embedder.get_summary())
+        
+        # 성공한 모델 수 확인
+        successful_models = [k for k, v in results.items() if v.get("status") == "success"]
+        
+        if successful_models:
+            logger.info("✅ %d개 모델 임베딩 완료", len(successful_models))
+            return True
+        else:
+            logger.error("❌ 모든 모델 임베딩 실패")
+            return False
+            
+    except Exception as e:
+        logger.error(f"❌ vector_db 데이터 로딩 실패: {e}")
+        return False
+
+def load_vector_db_data(data_dir: Path, db_url: str, models_to_use: list = None) -> bool:
+    """vector_db 데이터 로딩 메인 함수
+
+    Args:
+        data_dir: 데이터 디렉토리
+        db_url: 데이터베이스 URL
+        models_to_use: 사용할 모델 목록 (예: ['kakaobank', 'jina_v4'])
+                      None이면 모든 모델 사용
+    """
+    try:
+        logger.info("DB 연결 테스트 중...")
+        if not test_connection():
+            logger.error("DB 연결 실패")
+            return False
+        logger.info("DB 연결 성공")
+
+        # 1. vector_db 스키마 생성
+        if not _create_vector_db_schema():
+            return False
+
+        # 2. 선택된 모델로 임베딩 생성 및 로딩
+        if not _load_vector_db_data(data_dir, models_to_use=models_to_use):
+            return False
+        
+        logger.info("✅ vector_db 데이터 로딩 완료!")
+        return True
+        
+    except Exception as e:
+        logger.error(f"❌ vector_db 데이터 로딩 실패: {e}")
+        return False
+
 def main():
     import argparse
     os.environ.setdefault("PG_USER", "postgres")
@@ -192,6 +347,13 @@ def main():
     p_all = subparsers.add_parser("all", help="모든 데이터 로드")
     p_all.add_argument("--data-dir", type=str, default="backend/data/normalized",
                        help="정규화된 데이터 루트 경로 (기본: backend/data/normalized)")
+    
+    p_vector_db = subparsers.add_parser("vector_db", help="vector_db 데이터 로드 (선택된 모델로 임베딩)")
+    p_vector_db.add_argument("--data-dir", type=str, default="backend/data/vector_db",
+                            help="벡터 데이터 루트 경로 (기본: backend/data/vector_db)")
+    p_vector_db.add_argument("--models", type=str, nargs='+',
+                            choices=['e5', 'kakaobank', 'qwen3', 'gemma', 'jina_v4'],
+                            help="사용할 모델 (예: --models kakaobank jina_v4). 미지정 시 모든 모델 사용")
 
     args = parser.parse_args()
     if not args.command:
@@ -212,6 +374,9 @@ def main():
         success = load_infra_data(args.data_dir, db_url)
     elif args.command == "all":
         success = load_normalized_data(args.data_dir, db_url)
+    elif args.command == "vector_db":
+        models = args.models if hasattr(args, 'models') and args.models else None
+        success = load_vector_db_data(Path(args.data_dir), db_url, models_to_use=models)
 
     if success:
         logger.info("%s 데이터 적재가 성공적으로 완료되었습니다.", args.command)

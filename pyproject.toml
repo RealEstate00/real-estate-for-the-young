@@ -45,13 +45,14 @@ dependencies = [
     "chardet==5.2.0",
     
     # Torch (CPU wheel 인덱스 명시)
-    "torch==2.4.1",
-    "torchvision==0.19.1",
-    "torchaudio==2.4.1",
+    "torch>=2.6.0",
+    "torchvision>=0.20.0",
+    "torchaudio>=2.6.0",
     
     # Vector Database & Embeddings
     "chromadb>=0.5.0",
     "sentence-transformers>=3.0.0",
+    "peft>=0.13.0",
     "tqdm>=4.65.0",
     "pgvector>=0.2.5,<0.4",
     
@@ -84,8 +85,8 @@ dependencies = [
     "langchain_huggingface>=0.1.0",
     "langchain_groq>=0.1.0",
     "groq>=0.9.0",
-    "transformers==4.44.2",
-    "tokenizers==0.19.1",
+    "transformers>=4.50.0",
+    "tokenizers>=0.20.0",
     
     # NLP & Text Processing
     "nltk>=3.8.1",
@@ -125,3 +126,6 @@ data-collection-infra = "backend.services.data_collection.cli.infra.__main__:mai
 data-collection-rtms = "backend.services.data_collection.cli.rtms.__main__:main"
 data-db = "backend.services.db.cli.db_cli:main"
 data-load = "backend.services.loading.cli.load_cli:main"
+
+# RAG 시스템 CLI
+rag-eval = "backend.services.rag.cli.rag_cli:main"
