@@ -23,7 +23,7 @@ backend/services/rag/
 ├── retrieval/
 │   ├── vector_retriever.py  # 벡터 검색 리트리버
 │   └── reranker.py          # 리랭킹
-└── storage/
+└── vectorstore/
     └── ingestion/
         └── store.py         # pgvector 스토리지
 ```

@@ -17,7 +17,7 @@ from datetime import datetime
 project_root = Path(__file__).parent.parent.parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-from backend.services.rag.embeddings.config import EmbeddingModelType, get_model_config
+from backend.services.rag.models.config import EmbeddingModelType, get_model_config
 
 logger = logging.getLogger(__name__)
 
@@ -134,7 +134,7 @@ class PgVectorStore:
         batch_size: int = 100
     ) -> int:
         """
-        문서와 임베딩을 pgvector에 저장
+        문서와 임베딩을 pgvector에 저장 (모델별 테이블)
 
         Args:
             documents: 문서 리스트 [{'id', 'source', 'content', 'embedding'}]
@@ -147,8 +147,17 @@ class PgVectorStore:
         """
         self.connect()
 
-        # 모델 ID 확인
-        model_id = self.ensure_model_exists(model_type)
+        # 모델별 테이블 이름 매핑
+        table_mapping = {
+            EmbeddingModelType.MULTILINGUAL_E5_SMALL: 'embeddings_e5_small',
+            EmbeddingModelType.KAKAOBANK_DEBERTA: 'embeddings_kakaobank',
+            EmbeddingModelType.QWEN_EMBEDDING: 'embeddings_qwen3',
+            EmbeddingModelType.EMBEDDING_GEMMA: 'embeddings_gemma',
+        }
+
+        embedding_table = table_mapping.get(model_type)
+        if not embedding_table:
+            raise ValueError(f"Unknown model type: {model_type}")
 
         inserted_count = 0
 
@@ -191,16 +200,17 @@ class PgVectorStore:
                     ))
                     chunk_id = self.cursor.fetchone()[0]
 
-                    # 3. chunk_embeddings 삽입 (벡터)
+                    # 3. 모델별 임베딩 테이블에 삽입
                     embedding = doc.get('embedding', [])
                     if embedding:
                         # pgvector 형식으로 변환
                         embedding_str = '[' + ','.join(map(str, embedding)) + ']'
 
-                        self.cursor.execute("""
-                            INSERT INTO vector_db.chunk_embeddings (chunk_id, model_id, embedding)
-                            VALUES (%s, %s, %s::vector)
-                        """, (chunk_id, model_id, embedding_str))
+                        # 동적 테이블 이름 사용
+                        self.cursor.execute(f"""
+                            INSERT INTO vector_db.{embedding_table} (chunk_id, embedding)
+                            VALUES (%s, %s::vector)
+                        """, (chunk_id, embedding_str))
 
                     inserted_count += 1
 
@@ -219,29 +229,19 @@ class PgVectorStore:
 
     def create_vector_index(self, model_type: EmbeddingModelType, lists: int = 100):
         """
-        특정 모델의 벡터 인덱스 생성
+        벡터 인덱스 생성 (더 이상 사용 안 함 - 스키마에서 자동 생성됨)
+
+        모델별 테이블 구조로 변경되면서 HNSW 인덱스가 schema.sql에서 자동 생성됩니다.
+        이 메서드는 하위 호환성을 위해 남겨두되, 아무 작업도 하지 않습니다.
 
         Args:
             model_type: 임베딩 모델
-            lists: IVFFlat 리스트 수 (데이터 크기에 따라 조정)
+            lists: (사용 안 함)
         """
-        self.connect()
-
         config = get_model_config(model_type)
-
-        try:
-            # SQL 함수 호출
-            self.cursor.execute(
-                "SELECT create_vector_index_for_model(%s, %s)",
-                (config.model_name, lists)
-            )
-            self.conn.commit()
-            logger.info(f"Vector index created for {config.display_name}")
-
-        except Exception as e:
-            self.conn.rollback()
-            logger.error(f"Error creating vector index: {e}")
-            raise
+        logger.info(f"Vector index for {config.display_name} already created in schema.sql")
+        # 인덱스는 이미 schema.sql에서 생성되므로 아무 작업 안 함
+        pass
 
     def search_similar(
         self,

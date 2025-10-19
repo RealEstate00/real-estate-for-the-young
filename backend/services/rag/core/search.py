@@ -8,8 +8,8 @@ import time
 import logging
 from typing import List, Dict, Any, Optional
 
-from ..config import EmbeddingModelType
-from ..retrieval.vector_retriever import VectorRetriever as BaseVectorRetriever
+from ..models.config import EmbeddingModelType
+from ..retrieval.retriever import Retriever as BaseRetriever
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +33,7 @@ class VectorRetriever:
         """쿼리에 대한 유사 문서를 검색합니다."""
         
         if not self._retriever:
-            self._retriever = BaseVectorRetriever(
+            self._retriever = BaseRetriever(
                 model_type=self.model_type,
                 db_config=self.db_config
             )

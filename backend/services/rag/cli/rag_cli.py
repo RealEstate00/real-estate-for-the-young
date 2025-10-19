@@ -20,9 +20,12 @@ from typing import List, Optional
 project_root = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(project_root))
 
-from backend.services.rag.config import EmbeddingModelType, get_model_config
+from backend.services.rag.models.config import EmbeddingModelType, get_model_config
 from backend.services.rag.core.evaluator import RAGEvaluator
 from backend.services.rag.core.embedder import MultiModelEmbedder
+from backend.services.rag.rag_system import RAGSystem
+from backend.services.rag.retrieval.reranker import KeywordReranker, SemanticReranker, HybridReranker
+from backend.services.rag.augmentation.formatters import PromptFormatter, MarkdownFormatter, JSONFormatter
 from backend.services.db.common.db_utils import test_connection
 
 logging.basicConfig(
@@ -238,6 +241,180 @@ def embed_all_models(
         return False
 
 
+def get_model_type_from_name(model_name: str) -> EmbeddingModelType:
+    """모델 이름을 EmbeddingModelType으로 변환"""
+    mapping = {
+        "E5": EmbeddingModelType.MULTILINGUAL_E5_SMALL,
+        "KAKAO": EmbeddingModelType.KAKAOBANK_DEBERTA,
+        "QWEN": EmbeddingModelType.QWEN_EMBEDDING,
+        "GEMMA": EmbeddingModelType.EMBEDDING_GEMMA
+    }
+    return mapping.get(model_name.upper(), EmbeddingModelType.MULTILINGUAL_E5_SMALL)
+
+
+def get_formatter_from_name(format_name: str):
+    """포맷 이름을 포맷터 객체로 변환"""
+    formatters = {
+        "prompt": PromptFormatter(),
+        "markdown": MarkdownFormatter(),
+        "json": JSONFormatter()
+    }
+    return formatters.get(format_name.lower(), PromptFormatter())
+
+
+def run_search_command(args, db_config: dict) -> bool:
+    """검색 명령어 실행"""
+    try:
+        model_type = get_model_type_from_name(args.model)
+        formatter = get_formatter_from_name(args.format)
+        
+        # Reranker 설정
+        reranker = None
+        if args.reranking:
+            reranker = KeywordReranker()
+        
+        # RAG 시스템 초기화
+        rag_system = RAGSystem(
+            model_type=model_type,
+            db_config=db_config,
+            reranker=reranker,
+            formatter=formatter
+        )
+        
+        # 검색 실행
+        print(f"\n🔍 검색 중... (모델: {args.model}, Top-K: {args.top_k})")
+        search_results = rag_system.search_only(
+            query=args.query,
+            top_k=args.top_k,
+            use_reranker=args.reranking
+        )
+        
+        # 결과 출력
+        print(f"\n📊 검색 결과 ({len(search_results)}개 문서)")
+        print("=" * 80)
+        
+        for i, doc in enumerate(search_results, 1):
+            print(f"\n[문서 {i}] (유사도: {doc.get('similarity', 0):.3f})")
+            print(f"내용: {doc.get('content', '')[:200]}...")
+            if doc.get('metadata'):
+                print(f"메타데이터: {doc.get('metadata')}")
+        
+        return True
+        
+    except Exception as e:
+        logger.exception(f"검색 중 오류 발생: {e}")
+        return False
+
+
+def run_augment_command(args, db_config: dict) -> bool:
+    """증강 명령어 실행"""
+    try:
+        model_type = get_model_type_from_name(args.model)
+        formatter = get_formatter_from_name(args.format)
+        
+        # Reranker 설정
+        reranker = None
+        if args.reranking:
+            reranker = KeywordReranker()
+        
+        # RAG 시스템 초기화
+        rag_system = RAGSystem(
+            model_type=model_type,
+            db_config=db_config,
+            reranker=reranker,
+            formatter=formatter
+        )
+        
+        # 검색 및 증강 실행
+        print(f"\n🔍 검색 및 증강 중... (모델: {args.model}, 포맷: {args.format})")
+        response = rag_system.retrieve_and_augment(
+            query=args.query,
+            top_k=args.top_k,
+            use_reranker=args.reranking,
+            context_type=args.context_type
+        )
+        
+        # 결과 출력
+        print(f"\n📊 검색 결과 ({len(response.retrieved_documents)}개 문서)")
+        print("=" * 80)
+        
+        for i, doc in enumerate(response.retrieved_documents, 1):
+            print(f"\n[문서 {i}] (유사도: {doc.get('similarity', 0):.3f})")
+            print(f"내용: {doc.get('content', '')[:200]}...")
+        
+        print(f"\n🤖 증강된 컨텍스트 (토큰 수: {response.augmented_context.token_count})")
+        print("=" * 80)
+        print(response.augmented_context.context_text)
+        
+        return True
+        
+    except Exception as e:
+        logger.exception(f"증강 중 오류 발생: {e}")
+        return False
+
+
+def run_rag_eval_command(args, db_config: dict) -> bool:
+    """RAG 시스템 평가 명령어 실행"""
+    try:
+        model_type = get_model_type_from_name(args.model)
+        
+        # Reranker 설정
+        reranker = None
+        if args.reranking:
+            reranker = KeywordReranker()
+        
+        # RAG 시스템 초기화
+        rag_system = RAGSystem(
+            model_type=model_type,
+            db_config=db_config,
+            reranker=reranker
+        )
+        
+        # 테스트 쿼리 로드
+        test_queries = [
+            "주거복지사업이란 무엇인가요?",
+            "청년 주거 지원 정책은 어떤 것들이 있나요?",
+            "임대주택 신청 방법을 알려주세요",
+            "주거급여 신청 자격은 무엇인가요?",
+            "공공임대주택과 민간임대주택의 차이점은 무엇인가요?"
+        ]
+        
+        print(f"\n🧪 RAG 시스템 평가 중... (모델: {args.model}, 쿼리: {len(test_queries)}개)")
+        
+        # 평가 실행
+        eval_results = rag_system.evaluate_retrieval(
+            queries=test_queries,
+            top_k=args.top_k,
+            use_reranker=args.reranking
+        )
+        
+        # 결과 출력
+        print(f"\n📊 RAG 시스템 평가 결과")
+        print("=" * 80)
+        print(f"총 쿼리 수: {eval_results['total_queries']}")
+        print(f"성공한 쿼리: {eval_results['successful_queries']}")
+        print(f"실패한 쿼리: {eval_results['failed_queries']}")
+        print(f"평균 검색 시간: {eval_results['avg_time_ms']:.2f}ms")
+        print(f"쿼리당 평균 문서 수: {eval_results['avg_documents_per_query']:.1f}")
+        print(f"평균 유사도: {eval_results['avg_similarity']:.3f}")
+        
+        # 개별 쿼리 결과
+        print(f"\n📋 개별 쿼리 결과")
+        print("-" * 80)
+        for i, query_result in enumerate(eval_results['queries'], 1):
+            if query_result['success']:
+                print(f"{i}. {query_result['query'][:50]}...")
+                print(f"   문서 수: {query_result['documents_found']}, 유사도: {query_result['avg_similarity']:.3f}, 시간: {query_result['time_ms']:.1f}ms")
+            else:
+                print(f"{i}. {query_result['query'][:50]}... (실패: {query_result['error']})")
+        
+        return True
+        
+    except Exception as e:
+        logger.exception(f"RAG 평가 중 오류 발생: {e}")
+        return False
+
+
 def main():
     # 환경 변수 설정
     os.environ.setdefault("PG_USER", "postgres")
@@ -282,8 +459,32 @@ def main():
     p_rerank.add_argument("--no-save", action="store_true", help="결과 저장 안 함")
     p_rerank.add_argument("--save-search-results", action="store_true", help="검색 결과도 함께 저장 (파일 크기 증가)")
 
+    # RAG 시스템 검색
+    p_search = subparsers.add_parser("search", help="RAG 시스템으로 검색")
+    p_search.add_argument("query", type=str, help="검색 쿼리")
+    p_search.add_argument("--model", type=str, default="E5", choices=["E5", "KAKAO", "QWEN", "GEMMA"], help="사용할 모델")
+    p_search.add_argument("--top-k", type=int, default=5, help="검색할 결과 수")
+    p_search.add_argument("--reranking", action="store_true", help="리랭킹 사용")
+    p_search.add_argument("--format", type=str, default="prompt", choices=["prompt", "markdown", "json"], help="출력 포맷")
+    
+    # RAG 시스템 증강
+    p_augment = subparsers.add_parser("augment", help="검색 결과 증강")
+    p_augment.add_argument("query", type=str, help="검색 쿼리")
+    p_augment.add_argument("--model", type=str, default="E5", choices=["E5", "KAKAO", "QWEN", "GEMMA"], help="사용할 모델")
+    p_augment.add_argument("--top-k", type=int, default=5, help="검색할 결과 수")
+    p_augment.add_argument("--reranking", action="store_true", help="리랭킹 사용")
+    p_augment.add_argument("--format", type=str, default="prompt", choices=["prompt", "markdown", "json"], help="출력 포맷")
+    p_augment.add_argument("--context-type", type=str, default="general", choices=["general", "qa", "summarization"], help="컨텍스트 타입")
+    
+    # RAG 시스템 평가
+    p_rag_eval = subparsers.add_parser("rag-eval", help="RAG 시스템 전체 평가")
+    p_rag_eval.add_argument("--model", type=str, default="E5", choices=["E5", "KAKAO", "QWEN", "GEMMA"], help="사용할 모델")
+    p_rag_eval.add_argument("--top-k", type=int, default=5, help="검색할 결과 수")
+    p_rag_eval.add_argument("--reranking", action="store_true", help="리랭킹 사용")
+    p_rag_eval.add_argument("--no-save", action="store_true", help="결과 저장 안 함")
+
     # 임베딩 생성
-    p_embed = subparsers.add_parser("embed", help="5개 모델로 데이터 임베딩")
+    p_embed = subparsers.add_parser("embed", help="4개 모델로 데이터 임베딩")
     p_embed.add_argument(
         "--data-file",
         type=str,
@@ -345,6 +546,15 @@ def main():
             save_results=not args.no_save,
             save_search_results=args.save_search_results
         )
+    
+    elif args.command == "search":
+        success = run_search_command(args, db_config)
+    
+    elif args.command == "augment":
+        success = run_augment_command(args, db_config)
+    
+    elif args.command == "rag-eval":
+        success = run_rag_eval_command(args, db_config)
 
     elif args.command == "embed":
         success = embed_all_models(

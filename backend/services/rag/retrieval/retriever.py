@@ -11,40 +11,47 @@ from typing import List, Dict, Any, Optional, Tuple
 import psycopg2
 from psycopg2.extras import RealDictCursor
 
-from ..embeddings.encoder import EmbeddingEncoder
-from ..embeddings.config import EmbeddingModelType
+from ..models.encoder import EmbeddingEncoder
+from ..models.config import EmbeddingModelType
 from ..vectorstore.ingestion.store import PgVectorStore
+from .reranker import BaseReranker, KeywordReranker, SemanticReranker, HybridReranker
 
 logger = logging.getLogger(__name__)
 
 
-class VectorRetriever:
-    """벡터 검색 리트리버"""
+class Retriever:
+    """통합 검색 리트리버"""
 
     def __init__(
         self,
         model_type: EmbeddingModelType = EmbeddingModelType.MULTILINGUAL_E5_SMALL,
         db_config: Optional[Dict[str, str]] = None,
-        device: Optional[str] = None
+        device: Optional[str] = None,
+        reranker: Optional[BaseReranker] = None
     ):
         """
         Args:
             model_type: 사용할 임베딩 모델
             db_config: 데이터베이스 연결 설정
             device: 디바이스 ('cuda', 'cpu', None)
+            reranker: 리랭킹 모듈 (선택사항)
         """
         self.model_type = model_type
         self.encoder = EmbeddingEncoder(model_type, device)
         self.vector_store = PgVectorStore(db_config)
+        self.reranker = reranker
         
-        logger.info(f"VectorRetriever initialized with {self.encoder.get_display_name()}")
+        logger.info(f"Retriever initialized with {self.encoder.get_display_name()}")
+        if self.reranker:
+            logger.info(f"Reranker enabled: {self.reranker.name}")
 
     def search(
         self,
         query: str,
         top_k: int = 5,
         min_similarity: float = 0.0,
-        include_metadata: bool = True
+        include_metadata: bool = True,
+        use_reranker: bool = True
     ) -> List[Dict[str, Any]]:
         """
         쿼리에 대한 유사도 검색 수행
@@ -54,6 +61,7 @@ class VectorRetriever:
             top_k: 반환할 결과 수
             min_similarity: 최소 유사도 임계값
             include_metadata: 메타데이터 포함 여부
+            use_reranker: 리랭킹 사용 여부
 
         Returns:
             검색 결과 리스트
@@ -89,6 +97,11 @@ class VectorRetriever:
                     processed_result['metadata'] = result['metadata']
                 
                 processed_results.append(processed_result)
+            
+            # 리랭킹 적용 (선택사항)
+            if use_reranker and self.reranker:
+                logger.info(f"Applying reranker: {self.reranker.name}")
+                processed_results = self.reranker.rerank(query, processed_results, top_k)
             
             # 검색 로그 저장
             self._log_search(query, query_embedding, processed_results, search_time)
@@ -194,13 +207,21 @@ class VectorRetriever:
             )
             model_id = self.vector_store.cursor.fetchone()[0]
             
-            # 평균 유사도 계산
-            avg_similarity = sum(r['similarity'] for r in results) / len(results) if results else 0.0
+            # 평균 유사도 계산 (NaN 값 필터링)
+            import math
+            valid_similarities = [
+                r['similarity'] for r in results 
+                if not (math.isnan(r['similarity']) or math.isinf(r['similarity']))
+            ]
+            avg_similarity = sum(valid_similarities) / len(valid_similarities) if valid_similarities else 0.0
             
-            # 검색 결과 JSON 생성
+            # 검색 결과 JSON 생성 (NaN 값 필터링)
             results_json = {
                 'chunk_ids': [r['chunk_id'] for r in results],
-                'similarities': [r['similarity'] for r in results]
+                'similarities': [
+                    r['similarity'] if not (math.isnan(r['similarity']) or math.isinf(r['similarity'])) 
+                    else 0.0 for r in results
+                ]
             }
             
             # 로그 저장

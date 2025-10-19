@@ -15,9 +15,9 @@ from typing import List, Dict, Any, Optional
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-from backend.services.rag.config import EmbeddingModelType
+from backend.services.rag.models.config import EmbeddingModelType
 from backend.services.rag.models.encoder import EmbeddingEncoder
-from backend.services.rag.storage.ingestion.store import PgVectorStore
+from backend.services.rag.vectorstore.ingestion.store import PgVectorStore
 
 logger = logging.getLogger(__name__)
 
@@ -216,7 +216,7 @@ class DataIngestionPipeline:
                 return
 
             # 스키마 파일 읽기
-            schema_path = Path(__file__).parent / "vectorstore" / "schema.sql"
+            schema_path = Path(__file__).parent.parent / "vectorstore" / "schema.sql"
             with open(schema_path, 'r', encoding='utf-8') as f:
                 schema_sql = f.read()
 

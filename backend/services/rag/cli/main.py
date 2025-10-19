@@ -14,7 +14,7 @@ project_root = Path(__file__).parent.parent.parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 from backend.services.rag.core import MultiModelEmbedder, VectorRetriever, RAGEvaluator
-from backend.services.rag.config import EmbeddingModelType
+from backend.services.rag.models.config import EmbeddingModelType
 
 # 로깅 설정
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')

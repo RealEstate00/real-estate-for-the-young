@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS vector_db.embedding_models (
 );
 
 -- 모델 이름 인덱스
-CREATE INDEX idx_embedding_models_name ON vector_db.embedding_models(model_name);
+CREATE INDEX IF NOT EXISTS idx_embedding_models_name ON vector_db.embedding_models(model_name);
 
 -- ============================================================================
 -- 2. 문서 소스 테이블 (원본 데이터) - vector_db 스키마
@@ -42,8 +42,8 @@ CREATE TABLE IF NOT EXISTS vector_db.document_sources (
 );
 
 -- 소스 타입 인덱스
-CREATE INDEX idx_document_sources_type ON vector_db.document_sources(source_type);
-CREATE INDEX idx_document_sources_source_id ON vector_db.document_sources(source_id);
+CREATE INDEX IF NOT EXISTS idx_document_sources_type ON vector_db.document_sources(source_type);
+CREATE INDEX IF NOT EXISTS idx_document_sources_source_id ON vector_db.document_sources(source_id);
 
 -- ============================================================================
 -- 3. 문서 청크 테이블 (분할된 텍스트) - vector_db 스키마
@@ -63,49 +63,93 @@ CREATE TABLE IF NOT EXISTS vector_db.document_chunks (
 );
 
 -- 청크 검색 인덱스
-CREATE INDEX idx_document_chunks_source ON vector_db.document_chunks(source_id);
-CREATE INDEX idx_document_chunks_type ON vector_db.document_chunks(chunk_type);
+CREATE INDEX IF NOT EXISTS idx_document_chunks_source ON vector_db.document_chunks(source_id);
+CREATE INDEX IF NOT EXISTS idx_document_chunks_type ON vector_db.document_chunks(chunk_type);
 
 -- 전문 검색 (PostgreSQL FTS) - 한국어 설정이 없으면 기본 설정 사용
-CREATE INDEX idx_document_chunks_content_fts ON vector_db.document_chunks
+CREATE INDEX IF NOT EXISTS idx_document_chunks_content_fts ON vector_db.document_chunks
 USING GIN (to_tsvector('simple', content));
 
 -- ============================================================================
--- 4. 벡터 임베딩 테이블 (모델별로 저장) - vector_db 스키마
+-- 4. 벡터 임베딩 테이블 (모델별로 분리) - vector_db 스키마
 -- ============================================================================
-CREATE TABLE IF NOT EXISTS vector_db.chunk_embeddings (
+
+-- 4.1 E5-Small 임베딩 테이블 (384차원)
+CREATE TABLE IF NOT EXISTS vector_db.embeddings_e5_small (
     id SERIAL PRIMARY KEY,
     chunk_id INTEGER REFERENCES vector_db.document_chunks(id) ON DELETE CASCADE,
-    model_id INTEGER REFERENCES vector_db.embedding_models(id) ON DELETE CASCADE,
-
-    -- 벡터 임베딩 (차원은 모델마다 다름)
-    -- 모델별로 적절한 차원 설정 필요
-    -- E5-Small: 384, KakaoBank: 768, Qwen3: 1024, Gemma: 768
-    embedding vector,  -- 동적 차원 지원
-
-    -- 임베딩 생성 시간
+    embedding vector(384) NOT NULL,
     created_at TIMESTAMP DEFAULT NOW(),
-
-    -- 하나의 청크는 모델당 하나의 임베딩만 가짐
-    UNIQUE(chunk_id, model_id)
+    UNIQUE(chunk_id)
 );
 
--- 청크 인덱스
-CREATE INDEX idx_chunk_embeddings_chunk ON vector_db.chunk_embeddings(chunk_id);
-CREATE INDEX idx_chunk_embeddings_model ON vector_db.chunk_embeddings(model_id);
+CREATE INDEX IF NOT EXISTS idx_embeddings_e5_small_chunk ON vector_db.embeddings_e5_small(chunk_id);
+
+-- 4.2 KakaoBank DeBERTa 임베딩 테이블 (768차원)
+CREATE TABLE IF NOT EXISTS vector_db.embeddings_kakaobank (
+    id SERIAL PRIMARY KEY,
+    chunk_id INTEGER REFERENCES vector_db.document_chunks(id) ON DELETE CASCADE,
+    embedding vector(768) NOT NULL,
+    created_at TIMESTAMP DEFAULT NOW(),
+    UNIQUE(chunk_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_embeddings_kakaobank_chunk ON vector_db.embeddings_kakaobank(chunk_id);
+
+-- 4.3 Qwen3 Embedding 임베딩 테이블 (1024차원)
+CREATE TABLE IF NOT EXISTS vector_db.embeddings_qwen3 (
+    id SERIAL PRIMARY KEY,
+    chunk_id INTEGER REFERENCES vector_db.document_chunks(id) ON DELETE CASCADE,
+    embedding vector(1024) NOT NULL,
+    created_at TIMESTAMP DEFAULT NOW(),
+    UNIQUE(chunk_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_embeddings_qwen3_chunk ON vector_db.embeddings_qwen3(chunk_id);
+
+-- 4.4 EmbeddingGemma 임베딩 테이블 (768차원)
+CREATE TABLE IF NOT EXISTS vector_db.embeddings_gemma (
+    id SERIAL PRIMARY KEY,
+    chunk_id INTEGER REFERENCES vector_db.document_chunks(id) ON DELETE CASCADE,
+    embedding vector(768) NOT NULL,
+    created_at TIMESTAMP DEFAULT NOW(),
+    UNIQUE(chunk_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_embeddings_gemma_chunk ON vector_db.embeddings_gemma(chunk_id);
+
 
 -- ============================================================================
--- 5. 벡터 유사도 검색 인덱스 (모델별로 생성)
+-- 5. 벡터 유사도 검색 인덱스 (HNSW - 모델별로 생성)
 -- ============================================================================
--- 각 모델의 차원에 맞는 인덱스를 동적으로 생성할 수 있음
--- 예시: 384차원 (E5-Small)
--- CREATE INDEX idx_embeddings_384_cosine ON chunk_embeddings
--- USING ivfflat (embedding vector_cosine_ops)
--- WHERE (SELECT dimension FROM embedding_models WHERE id = model_id) = 384
--- WITH (lists = 100);
+-- HNSW 인덱스: IVFFlat보다 빠르고 정확함
+-- lists 파라미터 대신 m, ef_construction 파라미터 사용
 
--- 인덱스는 데이터 삽입 후 모델별로 생성하는 것이 좋음
--- 아래는 함수로 동적 생성 가능
+-- 5.1 E5-Small HNSW 인덱스
+CREATE INDEX IF NOT EXISTS idx_embeddings_e5_small_hnsw
+ON vector_db.embeddings_e5_small
+USING hnsw (embedding vector_cosine_ops)
+WITH (m = 16, ef_construction = 64);
+
+-- 5.2 KakaoBank HNSW 인덱스
+CREATE INDEX IF NOT EXISTS idx_embeddings_kakaobank_hnsw
+ON vector_db.embeddings_kakaobank
+USING hnsw (embedding vector_cosine_ops)
+WITH (m = 16, ef_construction = 64);
+
+-- 5.3 Qwen3 HNSW 인덱스
+CREATE INDEX IF NOT EXISTS idx_embeddings_qwen3_hnsw
+ON vector_db.embeddings_qwen3
+USING hnsw (embedding vector_cosine_ops)
+WITH (m = 16, ef_construction = 64);
+
+-- 5.4 Gemma HNSW 인덱스
+CREATE INDEX IF NOT EXISTS idx_embeddings_gemma_hnsw
+ON vector_db.embeddings_gemma
+USING hnsw (embedding vector_cosine_ops)
+WITH (m = 16, ef_construction = 64);
+
+-- 인덱스 없이 사용
 
 -- ============================================================================
 -- 6. 검색 로그 테이블 (모델 성능 비교용) - vector_db 스키마
@@ -123,8 +167,8 @@ CREATE TABLE IF NOT EXISTS vector_db.search_logs (
 );
 
 -- 검색 로그 인덱스
-CREATE INDEX idx_search_logs_model ON vector_db.search_logs(model_id);
-CREATE INDEX idx_search_logs_created ON vector_db.search_logs(created_at);
+CREATE INDEX IF NOT EXISTS idx_search_logs_model ON vector_db.search_logs(model_id);
+CREATE INDEX IF NOT EXISTS idx_search_logs_created ON vector_db.search_logs(created_at);
 
 -- ============================================================================
 -- 7. 모델 성능 메트릭 테이블 - vector_db 스키마
@@ -162,7 +206,7 @@ RETURNS NUMERIC AS $$
     SELECT 1 - (a <=> b);  -- pgvector의 코사인 거리를 유사도로 변환
 $$ LANGUAGE SQL IMMUTABLE STRICT;
 
--- 8.2 벡터 검색 함수 (모델별)
+-- 8.2 벡터 검색 함수 (모델별 테이블에서 검색)
 CREATE OR REPLACE FUNCTION search_similar_chunks(
     query_embedding vector,
     model_name_param VARCHAR,
@@ -176,56 +220,56 @@ RETURNS TABLE (
     metadata JSONB
 ) AS $$
 BEGIN
-    RETURN QUERY
-    SELECT
-        dc.id,
-        dc.content,
-        cosine_similarity(ce.embedding, query_embedding) as sim,
-        dc.metadata
-    FROM vector_db.chunk_embeddings ce
-    JOIN vector_db.document_chunks dc ON ce.chunk_id = dc.id
-    JOIN vector_db.embedding_models em ON ce.model_id = em.id
-    WHERE em.model_name = model_name_param
-        AND cosine_similarity(ce.embedding, query_embedding) >= min_similarity
-    ORDER BY ce.embedding <=> query_embedding  -- 코사인 거리 기준 정렬
-    LIMIT top_k_param;
-END;
-$$ LANGUAGE plpgsql;
+    -- 모델별로 적절한 테이블에서 검색
+    CASE model_name_param
+        WHEN 'intfloat/multilingual-e5-small' THEN
+            RETURN QUERY
+            SELECT dc.id, dc.content,
+                   cosine_similarity(e.embedding, query_embedding) as sim,
+                   dc.metadata
+            FROM vector_db.embeddings_e5_small e
+            JOIN vector_db.document_chunks dc ON e.chunk_id = dc.id
+            WHERE cosine_similarity(e.embedding, query_embedding) >= min_similarity
+            ORDER BY e.embedding <=> query_embedding
+            LIMIT top_k_param;
 
--- 8.3 모델별 벡터 인덱스 생성 함수
-CREATE OR REPLACE FUNCTION create_vector_index_for_model(
-    model_name_param VARCHAR,
-    lists_param INTEGER DEFAULT 100
-)
-RETURNS VOID AS $$
-DECLARE
-    model_id_var INTEGER;
-    index_name VARCHAR;
-BEGIN
-    -- 모델 ID 가져오기
-    SELECT id INTO model_id_var
-    FROM vector_db.embedding_models
-    WHERE model_name = model_name_param;
+        WHEN 'kakaobank/kf-deberta-base' THEN
+            RETURN QUERY
+            SELECT dc.id, dc.content,
+                   cosine_similarity(e.embedding, query_embedding) as sim,
+                   dc.metadata
+            FROM vector_db.embeddings_kakaobank e
+            JOIN vector_db.document_chunks dc ON e.chunk_id = dc.id
+            WHERE cosine_similarity(e.embedding, query_embedding) >= min_similarity
+            ORDER BY e.embedding <=> query_embedding
+            LIMIT top_k_param;
 
-    IF model_id_var IS NULL THEN
-        RAISE EXCEPTION 'Model not found: %', model_name_param;
-    END IF;
+        WHEN 'Qwen/Qwen3-Embedding-0.6B' THEN
+            RETURN QUERY
+            SELECT dc.id, dc.content,
+                   cosine_similarity(e.embedding, query_embedding) as sim,
+                   dc.metadata
+            FROM vector_db.embeddings_qwen3 e
+            JOIN vector_db.document_chunks dc ON e.chunk_id = dc.id
+            WHERE cosine_similarity(e.embedding, query_embedding) >= min_similarity
+            ORDER BY e.embedding <=> query_embedding
+            LIMIT top_k_param;
 
-    -- 인덱스 이름 생성
-    index_name := 'idx_embeddings_' || model_id_var || '_cosine';
+        WHEN 'google/embeddinggemma-300m' THEN
+            RETURN QUERY
+            SELECT dc.id, dc.content,
+                   cosine_similarity(e.embedding, query_embedding) as sim,
+                   dc.metadata
+            FROM vector_db.embeddings_gemma e
+            JOIN vector_db.document_chunks dc ON e.chunk_id = dc.id
+            WHERE cosine_similarity(e.embedding, query_embedding) >= min_similarity
+            ORDER BY e.embedding <=> query_embedding
+            LIMIT top_k_param;
 
-    -- 인덱스 생성 (동적 SQL)
-    EXECUTE format(
-        'CREATE INDEX IF NOT EXISTS %I ON vector_db.chunk_embeddings
-         USING ivfflat (embedding vector_cosine_ops)
-         WHERE model_id = %L
-         WITH (lists = %s)',
-        index_name,
-        model_id_var,
-        lists_param
-    );
 
-    RAISE NOTICE 'Created vector index: %', index_name;
+        ELSE
+            RAISE EXCEPTION 'Unknown model: %', model_name_param;
+    END CASE;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -238,21 +282,33 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- 트리거 생성
-CREATE TRIGGER update_embedding_models_updated_at
-    BEFORE UPDATE ON embedding_models
-    FOR EACH ROW
-    EXECUTE FUNCTION update_updated_at_column();
+-- 트리거 생성 (조건부)
+DO $$
+BEGIN
+    -- embedding_models 트리거
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'update_embedding_models_updated_at') THEN
+        CREATE TRIGGER update_embedding_models_updated_at
+            BEFORE UPDATE ON vector_db.embedding_models
+            FOR EACH ROW
+            EXECUTE FUNCTION update_updated_at_column();
+    END IF;
 
-CREATE TRIGGER update_document_sources_updated_at
-    BEFORE UPDATE ON document_sources
-    FOR EACH ROW
-    EXECUTE FUNCTION update_updated_at_column();
+    -- document_sources 트리거
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'update_document_sources_updated_at') THEN
+        CREATE TRIGGER update_document_sources_updated_at
+            BEFORE UPDATE ON vector_db.document_sources
+            FOR EACH ROW
+            EXECUTE FUNCTION update_updated_at_column();
+    END IF;
 
-CREATE TRIGGER update_model_metrics_updated_at
-    BEFORE UPDATE ON model_metrics
-    FOR EACH ROW
-    EXECUTE FUNCTION update_updated_at_column();
+    -- model_metrics 트리거
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'update_model_metrics_updated_at') THEN
+        CREATE TRIGGER update_model_metrics_updated_at
+            BEFORE UPDATE ON vector_db.model_metrics
+            FOR EACH ROW
+            EXECUTE FUNCTION update_updated_at_column();
+    END IF;
+END $$;
 
 -- ============================================================================
 -- 9. 초기 데이터 삽입 (5가지 모델)
@@ -262,8 +318,8 @@ INSERT INTO vector_db.embedding_models (model_name, display_name, dimension, max
 VALUES
     ('intfloat/multilingual-e5-small', 'E5-Small (Multilingual)', 384, 512, 'mean', '경량 모델, 빠른 추론 속도, 다국어 지원'),
     ('kakaobank/kf-deberta-base', 'KakaoBank DeBERTa', 768, 512, 'mean', '한국어 금융 데이터 특화, 높은 한국어 이해도'),
-    ('Qwen/Qwen3-Embedding-0.6B', 'Qwen3 Embedding 0.6B', 1024, 8192, 'mean', '대규모 모델, 긴 문맥 처리 가능, 고품질 임베딩'),
-    ('google/embeddinggemma-300m', 'EmbeddingGemma 300M', 768, 512, 'mean', 'Google Gemma 기반, 균형잡힌 성능'),
+    ('Qwen/Qwen3-Embedding-0.6B', 'Qwen3 Embedding 0.6B', 1024, 32768, 'last_token', '대규모 모델, 긴 문맥 처리 가능, 고품질 임베딩'),
+    ('google/embeddinggemma-300m', 'EmbeddingGemma 300M', 768, 2048, 'mean', 'Google Gemma 기반, 균형잡힌 성능'),
 ON CONFLICT (model_name) DO UPDATE SET
     display_name = EXCLUDED.display_name,
     dimension = EXCLUDED.dimension,

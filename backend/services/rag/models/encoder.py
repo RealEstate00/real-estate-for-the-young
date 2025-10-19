@@ -14,7 +14,7 @@ from typing import List, Union, Optional
 from sentence_transformers import SentenceTransformer
 from transformers import AutoModel, AutoTokenizer
 
-from ..config import EmbeddingModelType, ModelConfig, get_model_config
+from .config import EmbeddingModelType, ModelConfig, get_model_config
 from .loader import ModelFactory, EmbeddingModel
 
 logger = logging.getLogger(__name__)

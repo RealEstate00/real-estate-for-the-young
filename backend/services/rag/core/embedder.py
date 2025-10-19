@@ -9,9 +9,9 @@ import logging
 from typing import List, Dict, Any
 from pathlib import Path
 
-from ..config import EmbeddingModelType
-from ..ingest_data import DataIngestionPipeline
-from ..storage.ingestion.store import PgVectorStore
+from ..models.config import EmbeddingModelType
+from .ingest_data import DataIngestionPipeline
+from ..vectorstore.ingestion.store import PgVectorStore
 
 logger = logging.getLogger(__name__)
 
@@ -112,7 +112,7 @@ class MultiModelEmbedder:
         """특정 모델의 기존 임베딩을 삭제합니다 (모델별 테이블)."""
 
         # 모델별 테이블 이름 매핑
-        from ..config import EmbeddingModelType
+        from ..models.config import EmbeddingModelType
         table_mapping = {
             EmbeddingModelType.MULTILINGUAL_E5_SMALL: 'embeddings_e5_small',
             EmbeddingModelType.KAKAOBANK_DEBERTA: 'embeddings_kakaobank',
