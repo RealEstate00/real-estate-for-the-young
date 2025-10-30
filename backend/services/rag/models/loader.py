@@ -13,7 +13,7 @@ from sentence_transformers import SentenceTransformer
 from transformers import AutoModel, AutoTokenizer
 from dotenv import load_dotenv
 
-from ..config import EmbeddingModelType, ModelConfig, get_model_config
+from .config import EmbeddingModelType, ModelConfig, get_model_config
 
 # .env 파일 로드
 load_dotenv()

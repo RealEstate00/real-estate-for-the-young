@@ -60,7 +60,7 @@ def create_schemas():
     try:
         with engine.connect() as conn:
             # 스키마 생성
-            schemas = ['infra', 'housing', 'rtms']
+            schemas = ['infra', 'housing', 'rtms', 'vector_db']
             for schema in schemas:
                 conn.execute(text(f"CREATE SCHEMA IF NOT EXISTS {schema}"))
                 print(f"✅ {schema} 스키마 생성 완료")
@@ -144,9 +144,10 @@ def show_tables():
                     t.table_schema,
                     t.table_name,
                     t.table_type,
-                    COALESCE(s.n_tup_ins, 0) as row_count
+                    COALESCE(s.n_live_tup, 0) AS row_count
                 FROM information_schema.tables t
-                LEFT JOIN pg_stat_user_tables s ON t.table_name = s.relname AND t.table_schema = s.schemaname
+                LEFT JOIN pg_stat_all_tables s 
+                    ON t.table_name = s.relname AND t.table_schema = s.schemaname
                 WHERE t.table_schema IN ('housing', 'infra', 'rtms', 'vector_db')
                 ORDER BY t.table_schema, t.table_name
             """))

@@ -319,7 +319,7 @@ VALUES
     ('intfloat/multilingual-e5-small', 'E5-Small (Multilingual)', 384, 512, 'mean', '경량 모델, 빠른 추론 속도, 다국어 지원'),
     ('kakaobank/kf-deberta-base', 'KakaoBank DeBERTa', 768, 512, 'mean', '한국어 금융 데이터 특화, 높은 한국어 이해도'),
     ('Qwen/Qwen3-Embedding-0.6B', 'Qwen3 Embedding 0.6B', 1024, 32768, 'last_token', '대규모 모델, 긴 문맥 처리 가능, 고품질 임베딩'),
-    ('google/embeddinggemma-300m', 'EmbeddingGemma 300M', 768, 2048, 'mean', 'Google Gemma 기반, 균형잡힌 성능'),
+    ('google/embeddinggemma-300m', 'EmbeddingGemma 300M', 768, 2048, 'mean', 'Google Gemma 기반, 균형잡힌 성능')
 ON CONFLICT (model_name) DO UPDATE SET
     display_name = EXCLUDED.display_name,
     dimension = EXCLUDED.dimension,

@@ -19,8 +19,9 @@ logger = logging.getLogger(__name__)
 class MultiModelEmbedder:
     """5개 모델로 데이터를 임베딩하는 클래스"""
 
-    def __init__(self, data_file_path: str, db_config: Dict[str, str] = None, models_to_use: List[EmbeddingModelType] = None):
+    def __init__(self, data_file_path: str, db_config: Dict[str, str] = None, models_to_use: List[EmbeddingModelType] = None, skip_chunking: bool = False):
         self.data_file_path = data_file_path
+        self.skip_chunking = skip_chunking
 
         # 사용할 모델 지정 (기본값: 모든 모델)
         if models_to_use is None:
@@ -81,7 +82,8 @@ class MultiModelEmbedder:
                 source_type="finance_support",
                 chunk_size=512,
                 chunk_overlap=50,
-                batch_size=32
+                batch_size=32,
+                skip_chunking=self.skip_chunking
             )
             
             end_time = time.time()

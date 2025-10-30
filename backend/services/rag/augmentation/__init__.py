@@ -6,12 +6,20 @@ RAG Augmentation 모듈
 """
 
 from .augmenter import DocumentAugmenter, ContextBuilder
-from .formatters import PromptFormatter, MarkdownFormatter, JSONFormatter
+from .formatters import (
+    PromptFormatter,
+    MarkdownFormatter,
+    JSONFormatter,
+    PolicyFormatter,
+    EnhancedPromptFormatter
+)
 
 __all__ = [
     'DocumentAugmenter',
-    'ContextBuilder', 
+    'ContextBuilder',
     'PromptFormatter',
     'MarkdownFormatter',
-    'JSONFormatter'
+    'JSONFormatter',
+    'PolicyFormatter',
+    'EnhancedPromptFormatter'
 ]

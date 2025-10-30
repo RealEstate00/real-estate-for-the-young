@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 
-from ..config import EmbeddingModelType
+from ..models.config import EmbeddingModelType
 from .search import VectorRetriever
 from .metrics import MetricsCalculator
 

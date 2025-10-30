@@ -58,7 +58,8 @@ class DataIngestionPipeline:
         self,
         documents: List[Dict[str, Any]],
         chunk_size: int = 500,
-        chunk_overlap: int = 50
+        chunk_overlap: int = 50,
+        skip_chunking: bool = False
     ) -> List[Dict[str, Any]]:
         """문서를 청크로 분할하고 전처리"""
         logger.info(f"Processing {len(documents)} documents into chunks")
@@ -70,8 +71,12 @@ class DataIngestionPipeline:
             if not content.strip():
                 continue
             
-            # 간단한 청킹 (문장 단위)
-            chunks = self._split_into_chunks(content, chunk_size, chunk_overlap)
+            # 청킹 비활성화 옵션
+            if skip_chunking:
+                chunks = [content]  # 원본 그대로 사용
+            else:
+                # 간단한 청킹 (문장 단위)
+                chunks = self._split_into_chunks(content, chunk_size, chunk_overlap)
             
             for chunk_idx, chunk_text in enumerate(chunks):
                 if not chunk_text.strip():
@@ -116,13 +121,14 @@ class DataIngestionPipeline:
                 chunks.append(text[start:])
                 break
             
-            # 문장 경계에서 자르기 시도
-            last_period = text.rfind('。', start, end)
+            # 문장 경계에서 자르기 시도 (한국어 + 영어)
+            last_period = text.rfind('.', start, end)
+            last_korean_period = text.rfind('。', start, end)
             last_question = text.rfind('?', start, end)
             last_exclamation = text.rfind('!', start, end)
             
             # 가장 가까운 문장 끝 찾기
-            sentence_end = max(last_period, last_question, last_exclamation)
+            sentence_end = max(last_period, last_korean_period, last_question, last_exclamation)
             
             if sentence_end > start + chunk_size // 2:  # 너무 앞에서 자르지 않도록
                 end = sentence_end + 1
@@ -238,7 +244,8 @@ class DataIngestionPipeline:
         source_type: str = "finance_support",
         chunk_size: int = 500,
         chunk_overlap: int = 50,
-        batch_size: int = 32
+        batch_size: int = 32,
+        skip_chunking: bool = False
     ) -> Dict[str, Any]:
         """전체 파이프라인 실행"""
         logger.info("Starting full ingestion pipeline")
@@ -261,7 +268,7 @@ class DataIngestionPipeline:
             
             # 2. 문서 처리 (청킹)
             logger.info("Step 2: Processing documents into chunks")
-            chunks = self.process_documents(documents, chunk_size, chunk_overlap)
+            chunks = self.process_documents(documents, chunk_size, chunk_overlap, skip_chunking)
             pipeline_stats['steps']['chunks_created'] = len(chunks)
             
             # 3. 임베딩 생성

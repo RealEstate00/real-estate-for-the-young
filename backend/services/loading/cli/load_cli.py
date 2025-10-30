@@ -180,7 +180,7 @@ def _create_vector_db_schema():
                 'embedding_models', 'document_sources', 'document_chunks', 
                 'chunk_embeddings', 'search_logs', 'model_metrics',
                 'embeddings_e5_small', 'embeddings_kakaobank', 'embeddings_qwen3',
-                'embeddings_gemma', 'embeddings_jina_v4'
+                'embeddings_gemma'
             ]
             
             missing_tables = []
@@ -203,7 +203,7 @@ def _create_vector_db_schema():
             logger.info("🔧 테이블 생성 중...")
 
             # 스키마 파일 읽기 및 실행
-            schema_file = Path("backend/services/rag/storage/schema.sql")
+            schema_file = Path("backend/services/rag/vectorstore/schema.sql")
             if schema_file.exists():
                 with open(schema_file, 'r', encoding='utf-8') as f:
                     schema_sql = f.read()
@@ -226,7 +226,7 @@ def _load_vector_db_data(data_dir: Path, models_to_use: list = None) -> bool:
 
     Args:
         data_dir: 데이터 디렉토리
-        models_to_use: 사용할 모델 목록 (예: ['kakaobank', 'jina_v4'])
+        models_to_use: 사용할 모델 목록 (예: ['kakaobank', 'gemma'])
                       None이면 모든 모델 사용
     """
     try:
@@ -238,7 +238,7 @@ def _load_vector_db_data(data_dir: Path, models_to_use: list = None) -> bool:
             return False
 
         # 모델 선택
-        from backend.services.rag.config import EmbeddingModelType
+        from backend.services.rag.models.config import EmbeddingModelType
 
         model_mapping = {
             'e5': EmbeddingModelType.MULTILINGUAL_E5_SMALL,
@@ -292,7 +292,7 @@ def load_vector_db_data(data_dir: Path, db_url: str, models_to_use: list = None)
     Args:
         data_dir: 데이터 디렉토리
         db_url: 데이터베이스 URL
-        models_to_use: 사용할 모델 목록 (예: ['kakaobank', 'jina_v4'])
+        models_to_use: 사용할 모델 목록 (예: ['kakaobank', 'gemma'])
                       None이면 모든 모델 사용
     """
     try:
@@ -352,8 +352,8 @@ def main():
     p_vector_db.add_argument("--data-dir", type=str, default="backend/data/vector_db",
                             help="벡터 데이터 루트 경로 (기본: backend/data/vector_db)")
     p_vector_db.add_argument("--models", type=str, nargs='+',
-                            choices=['e5', 'kakaobank', 'qwen3', 'gemma', 'jina_v4'],
-                            help="사용할 모델 (예: --models kakaobank jina_v4). 미지정 시 모든 모델 사용")
+                            choices=['e5', 'kakaobank', 'qwen3', 'gemma'],
+                            help="사용할 모델 (예: --models kakaobank gemma). 미지정 시 모든 모델 사용")
 
     args = parser.parse_args()
     if not args.command:

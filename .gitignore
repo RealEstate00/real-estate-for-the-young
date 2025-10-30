@@ -223,6 +223,8 @@ backend/data/vector_db/chroma/*
 !backend/data/*/schema.*
 !backend/data/*/example.*
 
+backend/services/rag/results/
+
 # vector_db
 backend/data/PDF/chroma_db/
 backend/data/chroma_db/

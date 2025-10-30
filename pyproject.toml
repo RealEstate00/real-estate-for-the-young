@@ -128,4 +128,4 @@ data-db = "backend.services.db.cli.db_cli:main"
 data-load = "backend.services.loading.cli.load_cli:main"
 
 # RAG 시스템 CLI
-rag-eval = "backend.services.rag.cli.rag_cli:main"
+rag = "backend.services.rag.cli.rag_cli:main"

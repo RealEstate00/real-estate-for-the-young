@@ -55,6 +55,8 @@ class PgVectorStore:
         if self.conn is None or self.conn.closed:
             try:
                 self.conn = psycopg2.connect(**self.db_config)
+                # 인코딩 명시적 설정
+                self.conn.set_client_encoding('UTF8')
                 self.cursor = self.conn.cursor()
                 logger.info("Connected to PostgreSQL")
             except Exception as e:

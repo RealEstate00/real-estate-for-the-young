@@ -10,9 +10,10 @@ from typing import List, Dict, Any, Optional, Union
 from dataclasses import dataclass
 
 from .retrieval.retriever import Retriever
-from .retrieval.reranker import BaseReranker, KeywordReranker, SemanticReranker, HybridReranker
+from .retrieval.reranker import BaseReranker, KeywordReranker, SemanticReranker, CombinedReranker
 from .augmentation.augmenter import DocumentAugmenter, AugmentedContext
 from .augmentation.formatters import BaseFormatter, PromptFormatter, MarkdownFormatter
+from .generation.generator import LLMGenerator, OllamaGenerator, GenerationConfig, GeneratedAnswer
 from .models.config import EmbeddingModelType
 
 logger = logging.getLogger(__name__)
@@ -24,9 +25,9 @@ class RAGResponse:
     query: str
     retrieved_documents: List[Dict[str, Any]]
     augmented_context: AugmentedContext
-    generated_answer: Optional[str] = None
+    generated_answer: Optional[GeneratedAnswer] = None
     metadata: Dict[str, Any] = None
-    
+
     def __post_init__(self):
         if self.metadata is None:
             self.metadata = {}
@@ -43,7 +44,9 @@ class RAGSystem:
         reranker: Optional[BaseReranker] = None,
         formatter: Optional[BaseFormatter] = None,
         max_context_length: int = 4000,
-        max_documents: int = 5
+        max_documents: int = 5,
+        llm_generator: Optional[LLMGenerator] = None,
+        enable_generation: bool = False
     ):
         """
         Args:
@@ -54,6 +57,8 @@ class RAGSystem:
             formatter: 문서 포맷터
             max_context_length: 최대 컨텍스트 길이
             max_documents: 최대 문서 수
+            llm_generator: LLM 생성기
+            enable_generation: 생성 기능 활성화 여부
         """
         # Retrieval 컴포넌트
         self.retriever = Retriever(
@@ -62,17 +67,21 @@ class RAGSystem:
             device=device,
             reranker=reranker
         )
-        
+
         # Augmentation 컴포넌트
         self.augmenter = DocumentAugmenter(
             max_context_length=max_context_length,
             max_documents=max_documents
         )
-        
-        # Generation 컴포넌트 (미구현)
+
+        # Generation 컴포넌트
         self.formatter = formatter or PromptFormatter()
-        
+        self.generator = llm_generator
+        self.enable_generation = enable_generation and llm_generator is not None
+
         logger.info(f"RAG System initialized with {self.retriever.encoder.get_display_name()}")
+        if self.enable_generation:
+            logger.info(f"Generation enabled with {type(self.generator).__name__}")
     
     def retrieve_and_augment(
         self,
@@ -176,6 +185,56 @@ class RAGSystem:
             formatter=self.formatter
         )
     
+    def generate_answer(
+        self,
+        query: str,
+        top_k: int = 5,
+        min_similarity: float = 0.0,
+        use_reranker: bool = True,
+        context_type: str = "general",
+        generation_config: Optional[GenerationConfig] = None
+    ) -> RAGResponse:
+        """
+        전체 RAG 파이프라인 수행 (R + A + G)
+
+        Args:
+            query: 검색 쿼리
+            top_k: 검색할 문서 수
+            min_similarity: 최소 유사도
+            use_reranker: 리랭킹 사용 여부
+            context_type: 컨텍스트 타입
+            generation_config: 생성 설정
+
+        Returns:
+            완전한 RAG 응답 (검색 + 증강 + 생성)
+        """
+        if not self.enable_generation:
+            raise ValueError("Generation is not enabled. Initialize RAGSystem with llm_generator and enable_generation=True")
+
+        logger.info(f"Starting full RAG pipeline for query: {query[:50]}...")
+
+        # 1. Retrieval + Augmentation
+        response = self.retrieve_and_augment(
+            query=query,
+            top_k=top_k,
+            min_similarity=min_similarity,
+            use_reranker=use_reranker,
+            context_type=context_type
+        )
+
+        # 2. Generation
+        generated_answer = self.generator.generate(
+            query=query,
+            context=response.augmented_context.context_text,
+            config=generation_config
+        )
+
+        response.generated_answer = generated_answer
+        response.metadata['generation_enabled'] = True
+
+        logger.info(f"Full RAG pipeline completed: answer length = {len(generated_answer.answer)} chars")
+        return response
+
     def get_context_for_llm(
         self,
         query: str,
@@ -186,14 +245,14 @@ class RAGSystem:
     ) -> str:
         """
         LLM에 전달할 컨텍스트 생성
-        
+
         Args:
             query: 검색 쿼리
             top_k: 검색할 문서 수
             min_similarity: 최소 유사도
             use_reranker: 리랭킹 사용 여부
             context_type: 컨텍스트 타입
-            
+
         Returns:
             LLM용 컨텍스트 문자열
         """
@@ -204,7 +263,7 @@ class RAGSystem:
             use_reranker=use_reranker,
             context_type=context_type
         )
-        
+
         return response.augmented_context.context_text
     
     def evaluate_retrieval(

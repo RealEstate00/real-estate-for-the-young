@@ -14,7 +14,7 @@ from psycopg2.extras import RealDictCursor
 from ..models.encoder import EmbeddingEncoder
 from ..models.config import EmbeddingModelType
 from ..vectorstore.ingestion.store import PgVectorStore
-from .reranker import BaseReranker, KeywordReranker, SemanticReranker, HybridReranker
+from .reranker import BaseReranker, KeywordReranker, SemanticReranker, CombinedReranker
 
 logger = logging.getLogger(__name__)
 
