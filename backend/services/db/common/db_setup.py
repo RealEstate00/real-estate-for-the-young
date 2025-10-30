@@ -12,7 +12,8 @@ def setup_schema():
         base_dir / "schema_setup.sql",
         base_dir.parent / "schema" / "housing_schema.sql",
         base_dir.parent / "schema" / "infra_schema.sql",
-        base_dir.parent / "schema" / "rtms_schema.sql"
+        base_dir.parent / "schema" / "rtms_schema.sql",
+        base_dir.parent.parent / "rag" / "vectorstore" / "schema.sql"  # vector_db 스키마
     ]
     
     eng = get_engine()

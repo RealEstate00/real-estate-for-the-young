@@ -14,6 +14,9 @@ CREATE SCHEMA IF NOT EXISTS infra;
 -- RTMS 관련 스키마 (실거래가)
 CREATE SCHEMA IF NOT EXISTS rtms;
 
+-- RAG Vector DB 스키마 (임베딩 및 벡터 검색)
+CREATE SCHEMA IF NOT EXISTS vector_db;
+
 -- ===========================================
 -- 2. 스키마별 테이블 구조
 -- ===========================================
@@ -51,4 +54,4 @@ CREATE SCHEMA IF NOT EXISTS rtms;
 -- ===========================================
 
 -- 기본 검색 경로 설정 (스키마 명시 없이 사용 가능)
-ALTER DATABASE rey SET search_path TO housing, infra, rtms;
+ALTER DATABASE rey SET search_path TO housing, infra, rtms, vector_db;
