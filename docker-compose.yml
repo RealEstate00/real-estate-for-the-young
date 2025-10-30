@@ -1,0 +1,210 @@
+services:
+  # PostgreSQL 데이터베이스
+  postgres:
+    image: pgvector/pgvector:pg18              # PostgreSQL + pgvector 확장 이미지 사용
+    container_name: seoul_housing_postgres      # 컨테이너 이름 (docker 내부)
+    environment:
+      # PostgreSQL 기본 계정 정보
+      POSTGRES_DB: ${PG_DB:-rey}               # 생성할 기본 DB 이름
+      POSTGRES_USER: ${PG_USER:-postgres}      # DB 사용자
+      POSTGRES_PASSWORD: ${PG_PASSWORD:-post1234} # DB 비밀번호
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C.UTF-8 --auth-host=scram-sha-256" # DB 인코딩 및 초기화 옵션
+    ports:
+      - "5432:5432"                            # 호스트 5432 포트를 컨테이너 5432 포트로 연결 (DB 접근)
+    volumes:
+      - postgres_data:/var/lib/postgresql/data  # 볼륨을 데이터 파일 경로에 마운트 (DB 영속성 보장)
+      # 초기화 SQL 스크립트 자동 실행
+      # docker-compose up -d 시 *.sql을 이용하여 테이블 생성/pgvector 확장 자동 설치
+      - ./backend/services/db/schema/housing_schema.sql:/docker-entrypoint-initdb.d/01_housing_schema.sql # housing 테이블 스키마 초기화
+      - ./backend/services/db/schema/infra_schema.sql:/docker-entrypoint-initdb.d/02_infra_schema.sql     # infra 테이블 스키마 초기화
+      - ./backend/services/db/schema/rtms_schema.sql:/docker-entrypoint-initdb.d/03_rtms_schema.sql       # rtms 테이블 스키마 초기화
+    networks:
+      - housing_network                        # housing_network 브릿지 네트워크로 연결
+    restart: unless-stopped                    # unless-stopped: 컨테이너가 비정상적으로 종료되면 자동 재시작하지만 사용자가 명시적으로 중지(docker stop)하면 재시작하지 않음
+    # restart: always                        # always: 컨테이너가 비정상 종료되거나 사용자가 중지해도 항상 재시작함
+    healthcheck:
+      # PostgreSQL이 정상적으로 실행 중인지 확인
+      test: ["CMD-SHELL", "pg_isready -U postgres -d rey"] # DB 헬스체크 (접속 가능 여부 탐지)
+      interval: 10s                            # 헬스체크 주기
+      timeout: 5s                              # 헬스체크 타임아웃
+      retries: 5                               # 실패 허용 횟수
+      start_period: 30s                        # 컨테이너 시작 후 헬스체크 시작까지 대기 시간
+
+  # Redis (캐싱 및 세션 관리) - 현재 미사용
+  # redis:
+  #   image: redis:7-alpine
+  #   container_name: seoul_housing_redis
+  #   ports:
+  #     - "6379:6379"
+  #   volumes:
+  #     - redis_data:/data
+  #   networks:
+  #     - housing_network
+  #   restart: unless-stopped
+  #   command: redis-server --appendonly yes
+
+  #API 서버 (메인)
+  api:
+    build:
+      context: .                              # 프로젝트 루트에서 빌드
+      dockerfile: backend/Dockerfile          # backend의 Dockerfile 사용
+    container_name: seoul_housing_api         # 컨테이너 이름
+    environment:
+      - DATABASE_URL=postgresql://${PG_USER:-postgres}:${PG_PASSWORD:-post1234}@postgres:5432/${PG_DB:-rey} # 백엔드에서 쓸 postgres 주소
+      # - REDIS_URL=redis://redis:6379
+      - ENVIRONMENT=development               # 개발 환경
+      - SECRET_KEY=your-secret-key-here       # 웹서비스용 시크릿키
+      # LLM API Keys
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - HUGGINGFACEHUB_API_TOKEN=${HUGGINGFACEHUB_API_TOKEN}
+      # LLM Configuration
+      - USE_HYBRID_LLM=${USE_HYBRID_LLM:-False}
+      - AGENT_PROVIDER=${AGENT_PROVIDER:-openai}
+      - AGENT_MODEL=${AGENT_MODEL:-gpt-4o-mini}
+      - RESPONSE_MODEL=${RESPONSE_MODEL:-llama-3.3-70b-versatile}
+      - FORCE_LLM_PROVIDER=${FORCE_LLM_PROVIDER:-huggingface}
+    ports:
+      - "8000:8000"                           # 호스트 8000포트 → 컨테이너 8000포트 노출(메인 API)
+    volumes:
+      - ./backend/data:/app/data              # 백엔드 데이터 폴더 마운트
+      - ./backend/logs:/app/logs              # 백엔드 로그 폴더 마운트
+    depends_on:                               # postgres DB 정상 구동 후 api 컨테이너 실행
+      postgres:
+        condition: service_healthy
+      # redis:
+      #   condition: service_started
+    networks:
+      - housing_network                       # housing_network 브릿지 네트워크로 연결
+    restart: unless-stopped                   # 컨테이너가 비정상 종료시 자동 재시작
+    develop:
+      watch:
+        # Python 코드 변경 시 자동 동기화
+        - action: sync
+          path: ./backend
+          target: /app/backend
+          ignore:
+            - __pycache__/
+            - "*.pyc"
+            - "*.pyo"
+            - .pytest_cache/
+        # requirements.txt 변경 시 재빌드
+        - action: rebuild
+          path: ./requirements.txt
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]  # API 서버 헬스체크
+      interval: 30s                           # 주기
+      timeout: 10s                            # 타임아웃
+      retries: 3                              # 재시도 횟수
+
+  #프론트엔드 웹 애플리케이션 : 리액트
+  frontend:
+    build:
+      context: ./frontend                     # frontend 디렉토리에서 빌드
+      dockerfile: Dockerfile                  # 사용할 도커파일 명시
+    container_name: seoul_housing_frontend    # 컨테이너 이름
+    environment:
+      - REACT_APP_API_URL=http://localhost:8000         # 프론트에서 사용할 API 주소
+      - REACT_APP_ENVIRONMENT=development               # 개발 환경
+    ports:
+      - "3000:3000"                           # 호스트 3000포트 → 컨테이너 3000포트 (프론트엔드 개발 및 운영)
+    depends_on:
+      - api                                   # api service 구동 후 frontend 구동
+    networks:
+      - housing_network                       # housing_network 브릿지 네트워크로 연결
+    restart: unless-stopped                   # 컨테이너가 멈추면 자동 재시작
+    develop:
+      watch:
+        # React 소스 코드 변경 시 자동 동기화 (Vite HMR)
+        - action: sync
+          path: ./frontend/react/src
+          target: /app/react/src
+        # 정적 파일 변경 시 동기화
+        - action: sync
+          path: ./frontend/react/public
+          target: /app/react/public
+          ignore:
+            - node_modules/
+        # package.json 변경 시 재빌드
+        - action: rebuild
+          path: ./frontend/react/package.json
+
+  # Nginx (리버스 프록시) - 현재 미사용 (배포 시 필요)
+  # nginx:
+  #   image: nginx:alpine
+  #   container_name: seoul_housing_nginx
+  #   ports:
+  #     - "80:80"
+  #     - "443:443"
+  #   volumes:
+  #     - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+  #     - ./nginx/ssl:/etc/nginx/ssl
+  #   depends_on:
+  #     - frontend
+  #     - api
+  #   networks:
+  #     - housing_network
+  #   restart: unless-stopped
+
+  # 크롤링 스케줄러 (Celery) - 현재 미사용 (Celery 구현 필요)
+  # crawler:
+  #   build:
+  #     context: ./backend
+  #     dockerfile: Dockerfile
+  #   container_name: seoul_housing_crawler
+  #   command: celery -A app.celery worker --loglevel=info
+  #   environment:
+  #     - DATABASE_URL=postgresql://${PG_USER:-postgres}:${PG_PASSWORD:-post1234}@postgres:5432/${PG_DB:-rey}
+  #     - REDIS_URL=redis://redis:6379
+  #   volumes:
+  #     - ./backend/data:/app/data
+  #     - ./backend/logs:/app/logs
+  #   depends_on:
+  #     - postgres
+  #     - redis
+  #   networks:
+  #     - housing_network
+  #   restart: unless-stopped
+
+  # 크롤링 스케줄러 (Celery Beat) - 현재 미사용 (Celery 구현 필요)
+  # crawler_scheduler:
+  #   build:
+  #     context: ./backend
+  #     dockerfile: Dockerfile
+  #   container_name: seoul_housing_crawler_scheduler
+  #   command: celery -A app.celery beat --loglevel=info
+  #   environment:
+  #     - DATABASE_URL=postgresql://${PG_USER:-postgres}:${PG_PASSWORD:-post1234}@postgres:5432/${PG_DB:-rey}
+  #     - REDIS_URL=redis://redis:6379
+  #   volumes:
+  #     - ./backend/data:/app/data
+  #     - ./backend/logs:/app/logs
+  #   depends_on:
+  #     - postgres
+  #     - redis
+  #   networks:
+  #     - housing_network
+  #   restart: unless-stopped
+
+  # 모니터링 (Grafana) - 현재 미사용 (모니터링 필요 시 활성화)
+  # grafana:
+  #   image: grafana/grafana:latest
+  #   container_name: seoul_housing_grafana
+  #   environment:
+  #     - GF_SECURITY_ADMIN_PASSWORD=admin
+  #   ports:
+  #     - "3001:3000"
+  #   volumes:
+  #     - grafana_data:/var/lib/grafana
+  #   networks:
+  #     - housing_network
+  #   restart: unless-stopped
+
+volumes:
+  postgres_data: # PostgreSQL 데이터 영구 저장 볼륨
+  # redis_data:   # Redis 사용 시 활성화
+  # grafana_data: # Grafana 사용 시 활성화
+
+networks:
+  housing_network:
+    driver: bridge # 브릿지 네트워크 드라이버 사용

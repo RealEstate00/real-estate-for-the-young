@@ -1,6 +1,13 @@
 -- =====================================================================
 -- Housing Schema (Natural-key First, dependency-safe)
 -- =====================================================================
+
+-- pgvector 확장 활성화 (벡터 검색용) - 먼저 실행
+CREATE EXTENSION IF NOT EXISTS vector;
+
+-- 스키마 생성
+CREATE SCHEMA IF NOT EXISTS housing;
+
 SET search_path TO housing, public;
 
 -- 0) DROP views if any
@@ -134,3 +141,29 @@ CREATE TABLE housing.notice_tags (
 );
 CREATE INDEX IF NOT EXISTS idx_notice_tags_notice ON housing.notice_tags(notice_id);
 CREATE INDEX IF NOT EXISTS idx_notice_tags_type ON housing.notice_tags(tag_type);
+
+-- =============================================================================
+-- 8) VECTOR SEARCH TABLE (PgVector)
+-- =============================================================================
+
+-- 주택 검색을 위한 벡터 테이블 (ChromaDB 대체)
+DROP TABLE IF EXISTS housing.housing_documents CASCADE;
+CREATE TABLE housing.housing_documents (
+    id              VARCHAR(255) PRIMARY KEY,
+    notice_id       VARCHAR(255) REFERENCES housing.notices(notice_id) ON DELETE CASCADE,
+    content         TEXT NOT NULL,                    -- 검색 대상 텍스트
+    embedding       vector(768),                      -- 임베딩 벡터 (ko-sroberta-multitask 모델)
+    metadata        JSONB DEFAULT '{}'::jsonb,       -- 추가 메타데이터
+    created_at      TIMESTAMPTZ DEFAULT now(),
+    updated_at      TIMESTAMPTZ DEFAULT now()
+);
+
+-- 벡터 검색을 위한 인덱스 (HNSW - 빠른 근사 검색)
+CREATE INDEX IF NOT EXISTS idx_housing_documents_embedding_cosine 
+ON housing.housing_documents 
+USING hnsw (embedding vector_cosine_ops) 
+WITH (m = 16, ef_construction = 64);
+
+-- 일반 검색 인덱스
+CREATE INDEX IF NOT EXISTS idx_housing_documents_notice_id ON housing.housing_documents(notice_id);
+CREATE INDEX IF NOT EXISTS idx_housing_documents_metadata ON housing.housing_documents USING GIN(metadata);

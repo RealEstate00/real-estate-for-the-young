@@ -13,9 +13,9 @@ sys.path.insert(0, str(project_root))
 from langchain.agents import create_tool_calling_agent, AgentExecutor
 from langchain_core.output_parsers import StrOutputParser
 
-from backend.services.llm.models.llm import agent_llm, response_llm, USE_HYBRID
-from backend.services.llm.prompts.prompt import agent_prompt, rag_prompt
-from backend.services.llm.utils.housing_tools import search_housing
+from backend.services.llm.inha.models.llm import agent_llm, response_llm, USE_HYBRID
+from backend.services.llm.inha.prompts.prompt import agent_prompt, rag_prompt
+from backend.services.llm.inha.utils.housing_tools import search_housing_listings, search_housing_qa
 
 import logging
 logger = logging.getLogger(__name__)
@@ -25,8 +25,8 @@ logger = logging.getLogger(__name__)
 # Agent 설정
 # ============================================================================
 
-# 도구 목록 (향후 확장 가능)
-tools = [search_housing]
+# 도구 목록 (주택 매물 검색 + Q&A 검색)
+tools = [search_housing_listings, search_housing_qa]
 
 # Agent 생성 (도구 호출용)
 agent = create_tool_calling_agent(agent_llm, tools, agent_prompt)

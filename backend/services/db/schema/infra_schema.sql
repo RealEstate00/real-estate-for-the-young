@@ -2,6 +2,9 @@
 -- 인프라 DB 스키마 정의 (교통 통합 버전)
 -- ========================================
 
+-- 스키마 생성
+CREATE SCHEMA IF NOT EXISTS infra;
+
 -- 스키마 설정
 SET search_path TO infra, housing, rtms, public;
 

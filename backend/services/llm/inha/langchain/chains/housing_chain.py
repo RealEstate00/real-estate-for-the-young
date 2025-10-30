@@ -20,9 +20,9 @@ sys.path.insert(0, str(project_root))
 from langchain_core.runnables import RunnablePassthrough, RunnableLambda
 from langchain_core.output_parsers import StrOutputParser
 
-from backend.services.llm.models.llm import llm
-from backend.services.llm.prompts.prompt import rag_prompt
-from backend.services.llm.langchain.retrievers.retriever import GroqHousingRetriever
+from backend.services.llm.inha.models.llm import llm
+from backend.services.llm.inha.prompts.prompt import rag_prompt
+from backend.services.llm.inha.langchain.retrievers.retriever import GroqHousingRetriever
 
 import logging
 logger = logging.getLogger(__name__)

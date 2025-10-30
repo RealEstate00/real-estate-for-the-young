@@ -9,8 +9,9 @@ from pydantic import BaseModel, Field
 from typing import List, Optional, Dict
 import logging
 
-from backend.services.llm.langchain.chains.housing_chain import recommend_housing
-from backend.services.llm.langchain.chains.housing_agent import housing_assistant
+# 임시: ChromaDB에서 PgVector 마이그레이션 중 - import 주석 처리
+# from backend.services.llm.inha.langchain.chains.housing_chain import recommend_housing
+# from backend.services.llm.inha.langchain.chains.housing_agent import housing_assistant
 from typing import Literal
 
 # ModelType 정의
@@ -110,11 +111,8 @@ async def ask_question(request: QuestionRequest):
 ```
     """
     try:
-        # RAG Chain 사용
-        answer = recommend_housing(
-            query=request.question,
-            memory=None  # TODO: 메모리 구현 필요
-        )
+        # 임시: ChromaDB에서 PgVector 마이그레이션 중 - 기능 임시 비활성화
+        answer = f"죄송합니다. 현재 시스템을 업데이트 중입니다. 잠시 후 다시 시도해주세요. (질문: {request.question})"
         
         # 소스 정보는 RAG Chain에서 직접 제공하지 않으므로 빈 리스트
         sources = []
@@ -144,12 +142,8 @@ async def ask_question_with_agent(request: QuestionRequest):
 ```
     """
     try:
-        # Housing Agent 사용
-        answer = housing_assistant(
-            query=request.question,
-            memory=None,  # TODO: 메모리 구현 필요
-            use_hybrid=True
-        )
+        # 임시: ChromaDB에서 PgVector 마이그레이션 중 - 기능 임시 비활성화
+        answer = f"죄송합니다. 현재 시스템을 업데이트 중입니다. 잠시 후 다시 시도해주세요. (질문: {request.question})"
         
         # 소스 정보는 Agent에서 직접 제공하지 않으므로 빈 리스트
         sources = []
@@ -211,12 +205,8 @@ async def chat(request: ChatRequest):
         
         last_user_message = user_messages[-1].content
         
-        # Housing Agent 사용
-        answer = housing_assistant(
-            query=last_user_message,
-            memory=None,  # TODO: 메모리 구현 필요
-            use_hybrid=True
-        )
+        # 임시: ChromaDB에서 PgVector 마이그레이션 중 - 기능 임시 비활성화
+        answer = f"죄송합니다. 현재 시스템을 업데이트 중입니다. 잠시 후 다시 시도해주세요. (질문: {last_user_message})"
         
         # 소스 정보는 Agent에서 직접 제공하지 않으므로 빈 리스트
         sources = []

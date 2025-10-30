@@ -8,8 +8,13 @@ import os
 from dotenv import load_dotenv
 from langchain_groq import ChatGroq
 from langchain_openai import ChatOpenAI
-# from langchain_huggingface import ChatHuggingFace, HuggingFacePipeline
-# from transformers import pipeline
+from langchain_ollama.chat_models import ChatOllama 
+
+from langchain_huggingface import ChatHuggingFace, HuggingFacePipeline
+from transformers import pipeline
+import transformers
+import torch 
+
 
 # 환경 변수 로드
 load_dotenv()
@@ -24,6 +29,14 @@ USE_HYBRID = False
 
 
 
+ollama_llm = ChatOllama(
+    model="gemma3:4b",      # 이미 다운로드된 모델명 
+    temperature=0.9,
+    top_p=0.9,
+    num_predict=512,
+    keep_alive="10m"        # 로컬PC에서 모델이 메모리에 유지되는 시간 
+)
+
 groq_llm = ChatGroq(
     model="llama-3.3-70b-versatile",
     temperature=0.5,
@@ -31,36 +44,45 @@ groq_llm = ChatGroq(
     api_key=os.getenv("GROQ_API_KEY")
 )
 
+# 공식 문서 방식으로 수정 - transformers.pipeline 직접 사용
+# 로컬 CPU용 경량 모델 선택 (한국어 지원)
+MODEL_CHOICES = {
+    "korean_electra": "beomi/KcELECTRA-base",  # 한국어 ELECTRA (추천)
+    "korean_bert": "beomi/KcBERT-base",        # 한국어 BERT
+    "klue_roberta": "klue/roberta-base",       # KLUE 한국어 모델
+    "dialogpt": "microsoft/DialoGPT-small",    # 대화형 생성
+    "gpt2": "gpt2",                            # 기본 GPT-2
+    "distilgpt2": "distilgpt2",                # 경량 GPT-2
+}
 
-# 좋은 모델 써보려하니 안됨. 왜 그런지 물어보기
-# hf_pipeline = pipeline(
-#     "text-generation",
-#     model="MLP-KTLim/llama-3-Korean-Bllossom-8B",
-#     max_new_tokens=1000,
-#     temperature=0.7,
-#     return_full_text=False,
-#     truncation=True,
-#     max_length=8192,  # 모델의 max_position_embeddings(실제 최대 토큰 길이)에 맞춤
-#     do_sample=True,
-#     top_p=0.9,
-#     repetition_penalty=1.1,
-#     # 특별한 토큰 설정
-#     pad_token_id=128009,  # eos_token_id 사용
-#     eos_token_id=128009,
-#     bos_token_id=128000,
-#     # 데이터 타입 설정 - 모델의 데이터 타입 맞춤 
-#     torch_dtype="bfloat16",
-#     # 메모리 최적화
-#     device_map="auto", # 메모리 자동 관리
-#     low_cpu_mem_usage=True
-# )
+# 사용할 모델 직접 선택 (코드에서 설정)
+SELECTED_MODEL = "korean_electra"  # 원하는 모델로 변경 가능
+model_name = MODEL_CHOICES.get(SELECTED_MODEL, MODEL_CHOICES["korean_electra"])
 
+print(f"🔄 로컬 CPU 모델 로딩: {model_name}")
+
+# 공식 문서 방식으로 pipeline 생성 (CPU 최적화)
+hf_pipeline = transformers.pipeline(
+    "text-generation",
+    model=model_name,
+    model_kwargs={
+        "torch_dtype": torch.float32,  # CPU용 float32 사용
+        "use_auth_token": os.getenv("HUGGINGFACEHUB_API_TOKEN")  # HuggingFace 토큰 추가
+        #"device_map": "cpu",           # CPU 강제 사용
+    },
+    cache_dir=".\backend\data\models\hf",  # 모델이 저장될 폴더 지정
+)
+
+# 공식 문서처럼 eval 모드 설정
+hf_pipeline.model.eval()
 # HuggingFace pipeline 객체를 그냥 전달하면 langchain 에서 직접 지원하는 인터페이스와 다를 수 있으므로,
 # HuggingFacePipeline으로 한 번 래핑(wrap)해서 전달해야 ChatHuggingFace에서 일관된 LLM interface로 사용할 수 있다.
 # 즉, HuggingFacePipeline은 transformers의 pipeline을 langchain의 LLM 객체로 변환해주는 어댑터 역할을 한다.
-# huggingface_llm = ChatHuggingFace(
-#     llm=HuggingFacePipeline(pipeline=hf_pipeline)
-# )
+huggingface_llm = ChatHuggingFace(
+    llm=HuggingFacePipeline(pipeline=hf_pipeline)
+    )
+
+
 
 openai_llm = ChatOpenAI(
     model="gpt-4o-mini",
