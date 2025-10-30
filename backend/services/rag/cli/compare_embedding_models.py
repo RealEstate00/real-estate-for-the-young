@@ -37,7 +37,7 @@ def compare_all_models(
     query: str,
     llm_model: str = "gemma3:4b",
     formatter_name: str = "enhanced",
-    output_dir: str = "results"
+    output_dir: str = None
 ):
     """
     4가지 임베딩 모델로 전체 RAG 파이프라인 비교
@@ -46,8 +46,12 @@ def compare_all_models(
         query: 테스트 질문
         llm_model: 사용할 LLM 모델
         formatter_name: 사용할 포맷터 (enhanced 또는 policy)
-        output_dir: 결과 저장 디렉토리
+        output_dir: 결과 저장 디렉토리 (None이면 services/rag/results로 설정)
     """
+    # output_dir이 None이면 기본 경로 설정
+    if output_dir is None:
+        script_dir = Path(__file__).parent  # cli 디렉토리
+        output_dir = str(script_dir.parent / "results")
     db_config = get_db_config()
 
     # LLM Generator 초기화
@@ -123,7 +127,8 @@ def compare_all_models(
                 generation_config=GenerationConfig(
                     model=llm_model,
                     temperature=0.7,
-                    max_tokens=1500
+                    max_tokens=1500,
+                    timeout=60  # 타임아웃을 60초로 증가
                 )
             )
 
@@ -252,6 +257,7 @@ def generate_markdown_report(
 
         md_content += "#### 증강된 컨텍스트\n\n"
         md_content += "```\n"
+        
         # 컨텍스트가 너무 길면 앞부분만
         context = result['augmented_context']
         if len(context) > 2000:
@@ -305,8 +311,8 @@ def generate_markdown_report(
     md_content += "- **속도 우선**: 생성 시간이 짧은 모델 선택\n"
     md_content += "- **균형**: 검색 품질과 속도를 모두 고려하여 선택\n\n"
 
-    md_content += "---\n\n"
-    md_content += f"*보고서 생성 시간: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}*\n"
+    # md_content += "---\n\n"
+    # md_content += f"*보고서 생성 시간: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}*\n"
 
     # 파일 저장
     with open(filepath, 'w', encoding='utf-8') as f:
@@ -342,8 +348,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--output-dir",
         type=str,
-        default="results",
-        help="결과 저장 디렉토리 (기본: results)"
+        default=None,
+        help="결과 저장 디렉토리 (기본: services/rag/results)"
     )
 
     args = parser.parse_args()

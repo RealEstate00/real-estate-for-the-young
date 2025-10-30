@@ -241,8 +241,8 @@ def main():
     parser.add_argument(
         "--output-dir",
         type=str,
-        default="results",
-        help="결과 저장 디렉토리"
+        default=None,
+        help="결과 저장 디렉토리 (기본: services/rag/results)"
     )
 
     args = parser.parse_args()
@@ -264,6 +264,12 @@ def main():
     print(f"LLM: {args.llm_model}")
     print(f"모델: {', '.join(args.models)}")
     print(f"{'='*60}\n")
+
+    # 기본 출력 디렉토리 설정
+    output_dir = args.output_dir
+    if output_dir is None:
+        script_dir = Path(__file__).resolve().parent  # cli 디렉토리
+        output_dir = str(script_dir.parent / "results")
 
     # 각 모델 테스트 (순차 실행)
     results = []
@@ -288,7 +294,7 @@ def main():
         query=args.query,
         llm_model=args.llm_model,
         results=results,
-        output_dir=args.output_dir
+        output_dir=output_dir
     )
 
     print(f"\n{'='*60}")

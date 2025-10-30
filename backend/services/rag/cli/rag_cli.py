@@ -4,9 +4,10 @@
 RAG 시스템 통합 CLI
 
 Usage:
-  rag-eval all              # 5개 모델 전체 평가
-  rag-eval model --model E5  # 특정 모델 평가
-  rag-eval reranking        # 리랭킹 효과 비교
+  rag eval                  # 기본 평가 (사전 정의 쿼리로 검색 성능 평가)
+  rag model --model E5      # 단일 모델 평가
+  rag all                   # 전체 모델 평가
+  rag reranking             # 리랭킹 효과 비교
 """
 
 import os
@@ -67,8 +68,8 @@ def list_models():
 
     print("="*80)
     print("\n사용 방법:")
-    print("  rag-eval model --model E5")
-    print("  rag-eval model --model KAKAOBANK_DEBERTA")
+    print("  rag model --model E5")
+    print("  rag model --model KAKAOBANK_DEBERTA")
     print()
 
 
@@ -708,7 +709,7 @@ def main():
     p_augment.add_argument("--output-dir", type=str, default="results", help="저장할 디렉토리")
     
     # RAG 시스템 평가
-    p_rag_eval = subparsers.add_parser("rag-eval", help="RAG 시스템 전체 평가")
+    p_rag_eval = subparsers.add_parser("eval", help="RAG 시스템 전체 평가")
     p_rag_eval.add_argument("--model", type=str, default="E5", choices=["E5", "KAKAO", "QWEN", "GEMMA"], help="사용할 모델")
     p_rag_eval.add_argument("--top-k", type=int, default=5, help="검색할 결과 수")
     p_rag_eval.add_argument("--reranking", action="store_true", help="리랭킹 사용")
@@ -799,7 +800,7 @@ def main():
     elif args.command == "augment":
         success = run_augment_command(args, db_config)
     
-    elif args.command == "rag-eval":
+    elif args.command == "eval":
         success = run_rag_eval_command(args, db_config)
 
     elif args.command == "generate":
