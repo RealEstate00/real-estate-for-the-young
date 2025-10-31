@@ -25,12 +25,12 @@ class MultiModelEmbedder:
 
         # 사용할 모델 지정 (기본값: 모든 모델)
         if models_to_use is None:
-            # 5개 모델 정의
+            # 4개 모델 정의
             self.models = [
-                EmbeddingModelType.MULTILINGUAL_E5_SMALL,  # 384차원
-                EmbeddingModelType.KAKAOBANK_DEBERTA,      # 768차원
-                EmbeddingModelType.QWEN_EMBEDDING,         # 1024차원
-                EmbeddingModelType.EMBEDDING_GEMMA         # 768차원
+                EmbeddingModelType.MULTILINGUAL_E5_SMALL,   # 384차원
+                EmbeddingModelType.MULTILINGUAL_E5_BASE,    # 768차원
+                EmbeddingModelType.MULTILINGUAL_E5_LARGE,   # 1024차원
+                EmbeddingModelType.KAKAOBANK_DEBERTA        # 768차원
             ]
         else:
             self.models = models_to_use
@@ -117,9 +117,9 @@ class MultiModelEmbedder:
         from ..models.config import EmbeddingModelType
         table_mapping = {
             EmbeddingModelType.MULTILINGUAL_E5_SMALL: 'embeddings_e5_small',
+            EmbeddingModelType.MULTILINGUAL_E5_BASE: 'embeddings_e5_base',
+            EmbeddingModelType.MULTILINGUAL_E5_LARGE: 'embeddings_e5_large',
             EmbeddingModelType.KAKAOBANK_DEBERTA: 'embeddings_kakaobank',
-            EmbeddingModelType.QWEN_EMBEDDING: 'embeddings_qwen3',
-            EmbeddingModelType.EMBEDDING_GEMMA: 'embeddings_gemma',
         }
 
         embedding_table = table_mapping.get(model_type)
@@ -148,9 +148,9 @@ class MultiModelEmbedder:
         # 모델별 테이블 이름 매핑
         table_mapping = {
             EmbeddingModelType.MULTILINGUAL_E5_SMALL: 'embeddings_e5_small',
+            EmbeddingModelType.MULTILINGUAL_E5_BASE: 'embeddings_e5_base',
+            EmbeddingModelType.MULTILINGUAL_E5_LARGE: 'embeddings_e5_large',
             EmbeddingModelType.KAKAOBANK_DEBERTA: 'embeddings_kakaobank',
-            EmbeddingModelType.QWEN_EMBEDDING: 'embeddings_qwen3',
-            EmbeddingModelType.EMBEDDING_GEMMA: 'embeddings_gemma',
         }
 
         embedding_table = table_mapping.get(model_type)

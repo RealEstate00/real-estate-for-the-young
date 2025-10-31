@@ -17,6 +17,7 @@ from backend.services.rag.rag_system import RAGSystem
 from backend.services.rag.models.config import EmbeddingModelType
 from backend.services.rag.generation.generator import OllamaGenerator, GenerationConfig
 from backend.services.rag.augmentation.formatters import EnhancedPromptFormatter
+from backend.services.rag.retrieval.reranker import KeywordReranker
 import logging
 
 logging.basicConfig(level=logging.WARNING)  # 로그 최소화
@@ -54,10 +55,14 @@ def test_single_model(
             default_model=llm_model
         )
 
+        # Reranker 설정 (리랭킹 사용 시 LLM 키워드 추출 기본 활성화)
+        reranker = KeywordReranker()  # 기본값: LLM 키워드 추출 활성화, gemma3:4b 사용
+
         # RAG 시스템 초기화
         rag_system = RAGSystem(
             model_type=model_type,
             db_config=db_config,
+            reranker=reranker,
             formatter=EnhancedPromptFormatter(),
             llm_generator=llm_generator,
             enable_generation=True
@@ -74,17 +79,22 @@ def test_single_model(
         full_response = rag_system.generate_answer(
             query=query,
             top_k=3,  # 메모리 절약을 위해 3개만
+            use_reranker=True,  # 리랭킹 사용
             generation_config=GenerationConfig(
                 model=llm_model,
                 temperature=0.7,
-                max_tokens=1000
+                max_tokens=2000,
+                timeout=120  # 타임아웃 120초로 설정
             )
         )
 
         answer = full_response.generated_answer.answer
         gen_time = full_response.generated_answer.generation_time_ms
+        tokens_used = full_response.generated_answer.tokens_used
+        context_length = len(full_response.augmented_context.context_text)
 
         print(f"   ✅ 완료 ({gen_time:.0f}ms)")
+        print(f"   컨텍스트: {context_length} 글자, 생성 토큰: {tokens_used}, 답변: {len(answer)} 글자")
 
         # 검색된 문서 정보
         doc_sources = [
@@ -96,6 +106,9 @@ def test_single_model(
             "model_name": model_name,
             "answer": answer,
             "generation_time_ms": gen_time,
+            "tokens_used": tokens_used,
+            "context_length": context_length,
+            "answer_length": len(answer),
             "avg_similarity": avg_similarity,
             "doc_sources": doc_sources,
             "success": True
@@ -146,15 +159,18 @@ def generate_comparison_report(
 
 ## 📊 간단 요약
 
-| 모델 | 생성 시간 | 유사도 | 상태 |
-|------|-----------|--------|------|
+| 모델 | 생성 시간 | 유사도 | 컨텍스트 길이 | 생성 토큰 | 답변 길이 | 상태 |
+|------|-----------|--------|---------------|-----------|-----------|------|
 """
 
     for result in results:
         if result['success']:
-            md += f"| {result['model_name']} | {result['generation_time_ms']:.0f}ms | {result['avg_similarity']:.3f} | ✅ |\n"
+            ctx_len = result.get('context_length', 0)
+            tokens = result.get('tokens_used', 0)
+            ans_len = result.get('answer_length', 0)
+            md += f"| {result['model_name']} | {result['generation_time_ms']:.0f}ms | {result['avg_similarity']:.3f} | {ctx_len} | {tokens} | {ans_len} | ✅ |\n"
         else:
-            md += f"| {result['model_name']} | - | - | ❌ |\n"
+            md += f"| {result['model_name']} | - | - | - | - | - | ❌ |\n"
 
     md += "\n---\n\n"
 
@@ -222,8 +238,8 @@ def main():
         "query",
         type=str,
         nargs="?",
-        default="청년 전세대출 조건과 금리",
-        help="테스트 질문"
+        default=None,
+        help="단일 테스트 질문 (미지정 시 --queries-file 사용)"
     )
     parser.add_argument(
         "--llm-model",
@@ -235,8 +251,14 @@ def main():
         "--models",
         type=str,
         nargs="+",
-        default=["E5", "KAKAO", "QWEN", "GEMMA"],
+        default=["E5_SMALL", "E5_BASE", "E5_LARGE", "KAKAO"],
         help="비교할 임베딩 모델들"
+    )
+    parser.add_argument(
+        "--queries-file",
+        type=str,
+        default=str(Path(__file__).resolve().parent / "test_queries.txt"),
+        help="질문 목록 파일 경로 (기본: cli/test_queries.txt)"
     )
     parser.add_argument(
         "--output-dir",
@@ -249,10 +271,10 @@ def main():
 
     # 모델 매핑
     model_mapping = {
-        "E5": EmbeddingModelType.MULTILINGUAL_E5_SMALL,
-        "KAKAO": EmbeddingModelType.KAKAOBANK_DEBERTA,
-        "QWEN": EmbeddingModelType.QWEN_EMBEDDING,
-        "GEMMA": EmbeddingModelType.EMBEDDING_GEMMA
+        "E5_SMALL": EmbeddingModelType.MULTILINGUAL_E5_SMALL,
+        "E5_BASE": EmbeddingModelType.MULTILINGUAL_E5_BASE,
+        "E5_LARGE": EmbeddingModelType.MULTILINGUAL_E5_LARGE,
+        "KAKAO": EmbeddingModelType.KAKAOBANK_DEBERTA
     }
 
     db_config = get_db_config()
@@ -260,7 +282,23 @@ def main():
     print(f"\n{'='*60}")
     print(f"임베딩 모델별 답변 비교")
     print(f"{'='*60}")
-    print(f"질문: {args.query}")
+    if args.query:
+        queries = [args.query]
+    else:
+        # 파일에서 질문 로드
+        qpath = Path(args.queries_file)
+        if not qpath.exists():
+            raise FileNotFoundError(f"질문 파일을 찾을 수 없습니다: {qpath}")
+        queries = [
+            line.strip() 
+            for line in qpath.read_text(encoding='utf-8').splitlines() 
+            if line.strip() and not line.strip().startswith('#')
+        ]
+
+    if len(queries) == 1:
+        print(f"질문: {queries[0]}")
+    else:
+        print(f"질문 개수: {len(queries)}")
     print(f"LLM: {args.llm_model}")
     print(f"모델: {', '.join(args.models)}")
     print(f"{'='*60}\n")
@@ -271,36 +309,38 @@ def main():
         script_dir = Path(__file__).resolve().parent  # cli 디렉토리
         output_dir = str(script_dir.parent / "results")
 
-    # 각 모델 테스트 (순차 실행)
-    results = []
-    for model_name in args.models:
-        if model_name not in model_mapping:
-            print(f"⚠️  '{model_name}' 모델을 찾을 수 없습니다. 건너뜀.")
-            continue
+    # 각 질문별 보고서 생성
+    for q in queries:
+        # 각 모델 테스트 (순차 실행)
+        results = []
+        for model_name in args.models:
+            if model_name not in model_mapping:
+                print(f"⚠️  '{model_name}' 모델을 찾을 수 없습니다. 건너뜀.")
+                continue
 
-        result = test_single_model(
-            model_name=model_name,
-            model_type=model_mapping[model_name],
-            query=args.query,
+            result = test_single_model(
+                model_name=model_name,
+                model_type=model_mapping[model_name],
+                query=q,
+                llm_model=args.llm_model,
+                db_config=db_config
+            )
+            results.append(result)
+
+        # 보고서 생성
+        print(f"\n{'='*60}")
+        print(f"📝 보고서 생성 중... 질문: {q[:50]}...")
+        report_path = generate_comparison_report(
+            query=q,
             llm_model=args.llm_model,
-            db_config=db_config
+            results=results,
+            output_dir=output_dir
         )
-        results.append(result)
 
-    # 보고서 생성
-    print(f"\n{'='*60}")
-    print(f"📝 보고서 생성 중...")
-    report_path = generate_comparison_report(
-        query=args.query,
-        llm_model=args.llm_model,
-        results=results,
-        output_dir=output_dir
-    )
-
-    print(f"\n{'='*60}")
-    print(f"✅ 완료!")
-    print(f"📄 보고서: {report_path}")
-    print(f"{'='*60}\n")
+        print(f"\n{'='*60}")
+        print(f"✅ 완료!")
+        print(f"📄 보고서: {report_path}")
+        print(f"{'='*60}\n")
 
 
 if __name__ == "__main__":

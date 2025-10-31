@@ -62,8 +62,10 @@ def compare_all_models(
 
     # Ollama 서버 확인
     if not llm_generator.check_health():
-        logger.error("Ollama 서버가 실행 중이 아닙니다.")
-        return None
+        print("\n❌ Ollama 서버가 실행 중이 아닙니다.")
+        print("다음 명령어로 Ollama를 시작하세요: ollama serve")
+        import sys
+        sys.exit(1)
 
     # 포맷터 선택
     if formatter_name == "policy":
@@ -73,10 +75,10 @@ def compare_all_models(
 
     # 임베딩 모델 목록
     models = [
-        ("E5", EmbeddingModelType.MULTILINGUAL_E5_SMALL),
-        ("KAKAO", EmbeddingModelType.KAKAOBANK_DEBERTA),
-        ("QWEN", EmbeddingModelType.QWEN_EMBEDDING),
-        ("GEMMA", EmbeddingModelType.EMBEDDING_GEMMA)
+        ("E5_SMALL", EmbeddingModelType.MULTILINGUAL_E5_SMALL),
+        ("E5_BASE", EmbeddingModelType.MULTILINGUAL_E5_BASE),
+        ("E5_LARGE", EmbeddingModelType.MULTILINGUAL_E5_LARGE),
+        ("KAKAO", EmbeddingModelType.KAKAOBANK_DEBERTA)
     ]
 
     results = {}

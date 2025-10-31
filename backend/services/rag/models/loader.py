@@ -114,6 +114,10 @@ class EmbeddingModel:
                     **model_kwargs
                 ).to(self.device)
                 self.model.eval()
+                
+                # 결정론적 동작을 위한 설정
+                for param in self.model.parameters():
+                    param.requires_grad = False
 
                 logger.info(f"Loaded via Transformers: {self.config.model_name}")
                 self._is_loaded = True

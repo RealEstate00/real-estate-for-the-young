@@ -28,12 +28,11 @@ backend/services/rag/
         └── store.py         # pgvector 스토리지
 ```
 
-## 지원 모델 (5개)
+## 지원 모델 (4개)
 
 1. **Multilingual E5 Small** (384차원) - 경량, 빠른 속도, 100개 언어 지원
 2. **KakaoBank DeBERTa** (768차원) - 한국어 금융 도메인 특화
-3. **Qwen3 Embedding 0.6B** (1024차원) - MTEB 1위급, 32k 토큰, MRL 지원
-4. **EmbeddingGemma 300M** (768차원) - Google Gemma3 기반, Task-specific prompts
+3. **E5-Large** (1024차원) - 높은 정확도, 대규모 데이터셋 처리
 
 ## 사용법
 
@@ -70,12 +69,11 @@ python -m backend.services.rag.cli.rag_cli reranking
 
 ## 📊 지원하는 모델
 
-| 모델명                  | 식별자     | 차원 | 특징                    |
-| ----------------------- | ---------- | ---- | ----------------------- |
-| E5-Small (Multilingual) | `e5-small` | 384  | 빠른 추론, 다국어 지원  |
-| KakaoBank DeBERTa       | `kakao`    | 768  | 한국어 금융 데이터 특화 |
-| Qwen3 Embedding 0.6B    | `qwen`     | 1024 | 긴 문맥 처리, 고품질    |
-| EmbeddingGemma 300M     | `gemma`    | 768  | Google Gemma 기반       |
+| 모델명                  | 식별자     | 차원 | 특징                     |
+| ----------------------- | ---------- | ---- | ------------------------ |
+| E5-Small (Multilingual) | `e5-small` | 384  | 빠른 추론, 다국어 지원   |
+| KakaoBank DeBERTa       | `kakao`    | 768  | 한국어 금융 데이터 특화  |
+| E5-Large (Multilingual) | `e5_large` | 1024 | 높은 정확도, 대규모 처리 |
 
 ## 🔧 고급 사용법
 
@@ -160,26 +158,26 @@ python backend/services/rag/run_tests.py \
 ```
 🏆 최고 성능 모델:
   가장 빠른 모델: intfloat/multilingual-e5-small
-  가장 정확한 모델: Qwen/Qwen3-Embedding-0.6B
+  가장 정확한 모델: intfloat/multilingual-e5-large
   키워드 커버리지 최고: kakaobank/kf-deberta-base
 
 ⚡ 속도 순위:
   1. intfloat/multilingual-e5-small: 45.23ms
-  2. google/embeddinggemma-300m: 67.89ms
-  3. Qwen/Qwen3-Embedding-0.6B: 89.12ms
+  2. kakaobank/kf-deberta-base: 67.89ms
+  3. intfloat/multilingual-e5-large: 89.12ms
 
 🎯 품질 순위 (평균 유사도):
-  1. Qwen/Qwen3-Embedding-0.6B: 0.8234
+  1. intfloat/multilingual-e5-large: 0.8234
   2. kakaobank/kf-deberta-base: 0.8156
-  3. google/embeddinggemma-300m: 0.8098
+  3. intfloat/multilingual-e5-base: 0.8098
 ```
 
 ### 권장사항
 
-- **빠른 응답이 필요한 경우**: E5-Small 또는 EmbeddingGemma
-- **높은 정확도가 필요한 경우**: Qwen3 또는 KakaoBank DeBERTa
+- **빠른 응답이 필요한 경우**: E5-Small 또는 E5-Base
+- **높은 정확도가 필요한 경우**: E5-Large 또는 KakaoBank DeBERTa
 - **한국어 특화**: KakaoBank DeBERTa
-- **균형잡힌 성능**: EmbeddingGemma 300M
+- **균형잡힌 성능**: E5-Base
 
 ## 🐛 문제 해결
 

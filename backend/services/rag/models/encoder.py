@@ -19,6 +19,18 @@ from .loader import ModelFactory, EmbeddingModel
 
 logger = logging.getLogger(__name__)
 
+# 결정론적 동작을 위한 시드 설정 (재현 가능한 결과)
+def set_deterministic_mode(seed: int = 42):
+    """임베딩 생성의 결정론적 동작 설정"""
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
+        # CUDA 비결정론적 동작 방지
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
+
 
 class EmbeddingEncoder:
     """임베딩 인코더 (데이터 & 쿼리 임베딩)"""
@@ -44,10 +56,19 @@ class EmbeddingEncoder:
         self.device = self.model_wrapper.device
         self.model = self.model_wrapper.model
         self.tokenizer = self.model_wrapper.tokenizer
+        
+        # 결정론적 동작 설정 (재현 가능한 임베딩)
+        set_deterministic_mode(42)
+        
+        # 모델을 eval 모드로 설정 (dropout 비활성화)
+        if hasattr(self.model, 'eval'):
+            self.model.eval()
+        elif hasattr(self.model, 'model') and hasattr(self.model.model, 'eval'):
+            self.model.model.eval()
 
         logger.info(
             f"EmbeddingEncoder initialized: {self.config.display_name} "
-            f"(dim={self.config.dimension}, device={self.device})"
+            f"(dim={self.config.dimension}, device={self.device}, deterministic=True)"
         )
 
     def _prepare_text_for_model(self, text: str, is_query: bool = False) -> str:
@@ -64,28 +85,15 @@ class EmbeddingEncoder:
         extra_params = self.config.extra_params
 
         # 1. E5 모델 - prefix 필수
-        if self.model_type == EmbeddingModelType.MULTILINGUAL_E5_SMALL:
+        if self.model_type in [EmbeddingModelType.MULTILINGUAL_E5_SMALL, 
+                                EmbeddingModelType.MULTILINGUAL_E5_BASE,
+                                EmbeddingModelType.MULTILINGUAL_E5_LARGE]:
             if is_query:
                 return extra_params.get("query_prefix", "") + text
             else:
                 return extra_params.get("passage_prefix", "") + text
 
-        # 2. Qwen3 - instruction 추가 (쿼리만)
-        elif self.model_type == EmbeddingModelType.QWEN_EMBEDDING:
-            if is_query:
-                instruction = extra_params.get("query_instruction", "")
-                return instruction + text
-            else:
-                # 문서는 instruction 없음
-                return text
-
-        # 3. EmbeddingGemma - task prompt (SentenceTransformer 사용)
-        elif self.model_type == EmbeddingModelType.EMBEDDING_GEMMA:
-            # EmbeddingGemma는 SentenceTransformer로 로드되므로 여기서는 원본 반환
-            # task prompt는 SentenceTransformer의 encode()에서 처리됨
-            return text
-
-        # 4. 기타 모델 (KakaoBank DeBERTa 등)
+        # 2. 기타 모델 (KakaoBank DeBERTa 등)
         else:
             return text
 
@@ -185,6 +193,9 @@ class EmbeddingEncoder:
         Returns:
             벡터 리스트
         """
+        # 결정론적 동작 보장
+        set_deterministic_mode(42)
+        
         if batch_size is None:
             batch_size = self.config.batch_size
 
@@ -201,19 +212,6 @@ class EmbeddingEncoder:
             "batch_size": batch_size,
             "show_progress_bar": show_progress
         }
-
-        # Qwen3 - prompt_name 사용 (SentenceTransformer 인터페이스)
-        if self.model_type == EmbeddingModelType.QWEN_EMBEDDING:
-            if is_query:
-                encode_kwargs["prompt_name"] = "query"
-            # 문서는 prompt_name 없음
-
-        # EmbeddingGemma - task prompt 사용
-        if self.model_type == EmbeddingModelType.EMBEDDING_GEMMA:
-            if is_query:
-                encode_kwargs["task"] = "retrieval_query"
-            else:
-                encode_kwargs["task"] = "retrieval_document"
 
         embeddings = self.model.encode(processed_texts, **encode_kwargs)
 
@@ -249,6 +247,9 @@ class EmbeddingEncoder:
 
         all_embeddings = []
 
+        # 결정론적 동작 보장
+        set_deterministic_mode(42)
+        
         with torch.no_grad():
             for i in range(0, len(processed_texts), batch_size):
                 batch_texts = processed_texts[i:i + batch_size]
@@ -260,11 +261,6 @@ class EmbeddingEncoder:
                     "max_length": self.config.max_seq_length,
                     "return_tensors": "pt"
                 }
-
-                # Qwen3 - left padding
-                if self.model_type == EmbeddingModelType.QWEN_EMBEDDING:
-                    if self.tokenizer.padding_side != "left":
-                        self.tokenizer.padding_side = "left"
 
                 # Tokenize
                 inputs = self.tokenizer(batch_texts, **tokenize_kwargs).to(self.device)
@@ -328,21 +324,11 @@ class EmbeddingEncoder:
             sum_mask = torch.clamp(input_mask_expanded.sum(dim=1), min=1e-9)
             return sum_embeddings / sum_mask
 
-        # 2. Last token pooling (Qwen3)
-        elif pooling_mode == "last_token":
-            # Left padding이므로 마지막 유효 토큰 사용
-            sequence_lengths = attention_mask.sum(dim=1) - 1
-            batch_size = hidden_states.shape[0]
-            return hidden_states[
-                torch.arange(batch_size, device=hidden_states.device),
-                sequence_lengths
-            ]
-
-        # 3. CLS token (첫 번째 토큰)
+        # 2. CLS token (첫 번째 토큰)
         elif pooling_mode == "cls":
             return hidden_states[:, 0, :]
 
-        # 4. Max pooling
+        # 3. Max pooling
         elif pooling_mode == "max":
             input_mask_expanded = attention_mask.unsqueeze(-1).expand(
                 hidden_states.size()

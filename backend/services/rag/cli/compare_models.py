@@ -35,7 +35,7 @@ def get_db_config() -> dict:
     }
 
 
-def compare_models(query: str, models: list, embedding_model: str = "E5", save_results: bool = True):
+def compare_models(query: str, models: list, embedding_model: str = "E5_SMALL", save_results: bool = True):
     """
     여러 모델로 같은 질문에 답변 생성하고 비교
 
@@ -78,6 +78,15 @@ def compare_models(query: str, models: list, embedding_model: str = "E5", save_r
                 print(f"다음 명령어로 설치: ollama pull {model}")
                 results[model] = {"error": "Model not found"}
                 continue
+
+            # 임베딩 모델 타입 변환
+            embedding_model_mapping = {
+                "E5_SMALL": EmbeddingModelType.MULTILINGUAL_E5_SMALL,
+                "E5_BASE": EmbeddingModelType.MULTILINGUAL_E5_BASE,
+                "E5_LARGE": EmbeddingModelType.MULTILINGUAL_E5_LARGE,
+                "KAKAO": EmbeddingModelType.KAKAOBANK_DEBERTA
+            }
+            embedding_model_type = embedding_model_mapping.get(embedding_model.upper(), EmbeddingModelType.MULTILINGUAL_E5_SMALL)
 
             # RAG 시스템 초기화
             rag_system = RAGSystem(
@@ -168,7 +177,7 @@ if __name__ == "__main__":
         default=["gemma3:4b", "llama3.2:latest", "qwen3:4b"],
         help="비교할 모델들"
     )
-    parser.add_argument("--embedding", type=str, default="E5", help="임베딩 모델")
+    parser.add_argument("--embedding", type=str, default="E5_SMALL", help="임베딩 모델 (E5_SMALL, E5_BASE, E5_LARGE, KAKAO)")
     parser.add_argument("--no-save", action="store_true", help="결과 저장 안 함")
 
     args = parser.parse_args()

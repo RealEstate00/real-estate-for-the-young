@@ -179,8 +179,7 @@ def _create_vector_db_schema():
             required_tables = [
                 'embedding_models', 'document_sources', 'document_chunks', 
                 'chunk_embeddings', 'search_logs', 'model_metrics',
-                'embeddings_e5_small', 'embeddings_kakaobank', 'embeddings_qwen3',
-                'embeddings_gemma'
+                'embeddings_e5_small', 'embeddings_e5_base', 'embeddings_e5_large', 'embeddings_kakaobank'
             ]
             
             missing_tables = []
@@ -226,7 +225,7 @@ def _load_vector_db_data(data_dir: Path, models_to_use: list = None) -> bool:
 
     Args:
         data_dir: 데이터 디렉토리
-        models_to_use: 사용할 모델 목록 (예: ['kakaobank', 'gemma'])
+        models_to_use: 사용할 모델 목록 (예: ['kakaobank', 'e5_base'])
                       None이면 모든 모델 사용
     """
     try:
@@ -242,9 +241,9 @@ def _load_vector_db_data(data_dir: Path, models_to_use: list = None) -> bool:
 
         model_mapping = {
             'e5': EmbeddingModelType.MULTILINGUAL_E5_SMALL,
+            'e5_base': EmbeddingModelType.MULTILINGUAL_E5_BASE,
+            'e5_large': EmbeddingModelType.MULTILINGUAL_E5_LARGE,
             'kakaobank': EmbeddingModelType.KAKAOBANK_DEBERTA,
-            'qwen3': EmbeddingModelType.QWEN_EMBEDDING,
-            'gemma': EmbeddingModelType.EMBEDDING_GEMMA
         }
 
         if models_to_use:
@@ -292,7 +291,7 @@ def load_vector_db_data(data_dir: Path, db_url: str, models_to_use: list = None)
     Args:
         data_dir: 데이터 디렉토리
         db_url: 데이터베이스 URL
-        models_to_use: 사용할 모델 목록 (예: ['kakaobank', 'gemma'])
+        models_to_use: 사용할 모델 목록 (예: ['kakaobank', 'e5_base'])
                       None이면 모든 모델 사용
     """
     try:
@@ -352,7 +351,7 @@ def main():
     p_vector_db.add_argument("--data-dir", type=str, default="backend/data/vector_db",
                             help="벡터 데이터 루트 경로 (기본: backend/data/vector_db)")
     p_vector_db.add_argument("--models", type=str, nargs='+',
-                            choices=['e5', 'kakaobank', 'qwen3', 'gemma'],
+                            choices=['e5', 'e5_base', 'e5_large', 'kakaobank'],
                             help="사용할 모델 (예: --models kakaobank gemma). 미지정 시 모든 모델 사용")
 
     args = parser.parse_args()

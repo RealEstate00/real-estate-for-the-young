@@ -96,19 +96,8 @@ CREATE TABLE IF NOT EXISTS vector_db.embeddings_kakaobank (
 
 CREATE INDEX IF NOT EXISTS idx_embeddings_kakaobank_chunk ON vector_db.embeddings_kakaobank(chunk_id);
 
--- 4.3 Qwen3 Embedding 임베딩 테이블 (1024차원)
-CREATE TABLE IF NOT EXISTS vector_db.embeddings_qwen3 (
-    id SERIAL PRIMARY KEY,
-    chunk_id INTEGER REFERENCES vector_db.document_chunks(id) ON DELETE CASCADE,
-    embedding vector(1024) NOT NULL,
-    created_at TIMESTAMP DEFAULT NOW(),
-    UNIQUE(chunk_id)
-);
-
-CREATE INDEX IF NOT EXISTS idx_embeddings_qwen3_chunk ON vector_db.embeddings_qwen3(chunk_id);
-
--- 4.4 EmbeddingGemma 임베딩 테이블 (768차원)
-CREATE TABLE IF NOT EXISTS vector_db.embeddings_gemma (
+-- 4.3 E5-Base 임베딩 테이블 (768차원)
+CREATE TABLE IF NOT EXISTS vector_db.embeddings_e5_base (
     id SERIAL PRIMARY KEY,
     chunk_id INTEGER REFERENCES vector_db.document_chunks(id) ON DELETE CASCADE,
     embedding vector(768) NOT NULL,
@@ -116,7 +105,18 @@ CREATE TABLE IF NOT EXISTS vector_db.embeddings_gemma (
     UNIQUE(chunk_id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_embeddings_gemma_chunk ON vector_db.embeddings_gemma(chunk_id);
+CREATE INDEX IF NOT EXISTS idx_embeddings_e5_base_chunk ON vector_db.embeddings_e5_base(chunk_id);
+
+-- 4.6 E5-Large 임베딩 테이블 (1024차원)
+CREATE TABLE IF NOT EXISTS vector_db.embeddings_e5_large (
+    id SERIAL PRIMARY KEY,
+    chunk_id INTEGER REFERENCES vector_db.document_chunks(id) ON DELETE CASCADE,
+    embedding vector(1024) NOT NULL,
+    created_at TIMESTAMP DEFAULT NOW(),
+    UNIQUE(chunk_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_embeddings_e5_large_chunk ON vector_db.embeddings_e5_large(chunk_id);
 
 
 -- ============================================================================
@@ -137,15 +137,15 @@ ON vector_db.embeddings_kakaobank
 USING hnsw (embedding vector_cosine_ops)
 WITH (m = 16, ef_construction = 64);
 
--- 5.3 Qwen3 HNSW 인덱스
-CREATE INDEX IF NOT EXISTS idx_embeddings_qwen3_hnsw
-ON vector_db.embeddings_qwen3
+-- 5.3 E5-Base HNSW 인덱스
+CREATE INDEX IF NOT EXISTS idx_embeddings_e5_base_hnsw
+ON vector_db.embeddings_e5_base
 USING hnsw (embedding vector_cosine_ops)
 WITH (m = 16, ef_construction = 64);
 
--- 5.4 Gemma HNSW 인덱스
-CREATE INDEX IF NOT EXISTS idx_embeddings_gemma_hnsw
-ON vector_db.embeddings_gemma
+-- 5.6 E5-Large HNSW 인덱스
+CREATE INDEX IF NOT EXISTS idx_embeddings_e5_large_hnsw
+ON vector_db.embeddings_e5_large
 USING hnsw (embedding vector_cosine_ops)
 WITH (m = 16, ef_construction = 64);
 
@@ -230,7 +230,29 @@ BEGIN
             FROM vector_db.embeddings_e5_small e
             JOIN vector_db.document_chunks dc ON e.chunk_id = dc.id
             WHERE cosine_similarity(e.embedding, query_embedding) >= min_similarity
-            ORDER BY e.embedding <=> query_embedding
+            ORDER BY e.embedding <=> query_embedding, dc.id
+            LIMIT top_k_param;
+
+        WHEN 'intfloat/multilingual-e5-base' THEN
+            RETURN QUERY
+            SELECT dc.id, dc.content,
+                   cosine_similarity(e.embedding, query_embedding) as sim,
+                   dc.metadata
+            FROM vector_db.embeddings_e5_base e
+            JOIN vector_db.document_chunks dc ON e.chunk_id = dc.id
+            WHERE cosine_similarity(e.embedding, query_embedding) >= min_similarity
+            ORDER BY e.embedding <=> query_embedding, dc.id
+            LIMIT top_k_param;
+
+        WHEN 'intfloat/multilingual-e5-large' THEN
+            RETURN QUERY
+            SELECT dc.id, dc.content,
+                   cosine_similarity(e.embedding, query_embedding) as sim,
+                   dc.metadata
+            FROM vector_db.embeddings_e5_large e
+            JOIN vector_db.document_chunks dc ON e.chunk_id = dc.id
+            WHERE cosine_similarity(e.embedding, query_embedding) >= min_similarity
+            ORDER BY e.embedding <=> query_embedding, dc.id
             LIMIT top_k_param;
 
         WHEN 'kakaobank/kf-deberta-base' THEN
@@ -241,31 +263,8 @@ BEGIN
             FROM vector_db.embeddings_kakaobank e
             JOIN vector_db.document_chunks dc ON e.chunk_id = dc.id
             WHERE cosine_similarity(e.embedding, query_embedding) >= min_similarity
-            ORDER BY e.embedding <=> query_embedding
+            ORDER BY e.embedding <=> query_embedding, dc.id
             LIMIT top_k_param;
-
-        WHEN 'Qwen/Qwen3-Embedding-0.6B' THEN
-            RETURN QUERY
-            SELECT dc.id, dc.content,
-                   cosine_similarity(e.embedding, query_embedding) as sim,
-                   dc.metadata
-            FROM vector_db.embeddings_qwen3 e
-            JOIN vector_db.document_chunks dc ON e.chunk_id = dc.id
-            WHERE cosine_similarity(e.embedding, query_embedding) >= min_similarity
-            ORDER BY e.embedding <=> query_embedding
-            LIMIT top_k_param;
-
-        WHEN 'google/embeddinggemma-300m' THEN
-            RETURN QUERY
-            SELECT dc.id, dc.content,
-                   cosine_similarity(e.embedding, query_embedding) as sim,
-                   dc.metadata
-            FROM vector_db.embeddings_gemma e
-            JOIN vector_db.document_chunks dc ON e.chunk_id = dc.id
-            WHERE cosine_similarity(e.embedding, query_embedding) >= min_similarity
-            ORDER BY e.embedding <=> query_embedding
-            LIMIT top_k_param;
-
 
         ELSE
             RAISE EXCEPTION 'Unknown model: %', model_name_param;
@@ -317,9 +316,9 @@ END $$;
 INSERT INTO vector_db.embedding_models (model_name, display_name, dimension, max_seq_length, pooling_mode, notes)
 VALUES
     ('intfloat/multilingual-e5-small', 'E5-Small (Multilingual)', 384, 512, 'mean', '경량 모델, 빠른 추론 속도, 다국어 지원'),
-    ('kakaobank/kf-deberta-base', 'KakaoBank DeBERTa', 768, 512, 'mean', '한국어 금융 데이터 특화, 높은 한국어 이해도'),
-    ('Qwen/Qwen3-Embedding-0.6B', 'Qwen3 Embedding 0.6B', 1024, 32768, 'last_token', '대규모 모델, 긴 문맥 처리 가능, 고품질 임베딩'),
-    ('google/embeddinggemma-300m', 'EmbeddingGemma 300M', 768, 2048, 'mean', 'Google Gemma 기반, 균형잡힌 성능')
+    ('intfloat/multilingual-e5-base', 'E5-Base (Multilingual)', 768, 512, 'mean', '균형잡힌 성능, 768차원, 다국어 지원 (공식 모델)'),
+    ('intfloat/multilingual-e5-large', 'E5-Large (Multilingual)', 1024, 512, 'mean', '다국어 대형 모델, 1024차원 임베딩, 고성능'),
+    ('kakaobank/kf-deberta-base', 'KakaoBank DeBERTa', 768, 512, 'mean', '한국어 금융 데이터 특화, 높은 한국어 이해도')
 ON CONFLICT (model_name) DO UPDATE SET
     display_name = EXCLUDED.display_name,
     dimension = EXCLUDED.dimension,

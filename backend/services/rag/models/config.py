@@ -13,9 +13,9 @@ from enum import Enum
 class EmbeddingModelType(str, Enum):
     """지원하는 임베딩 모델 타입"""
     MULTILINGUAL_E5_SMALL = "intfloat/multilingual-e5-small"
+    MULTILINGUAL_E5_BASE = "intfloat/multilingual-e5-base"
+    MULTILINGUAL_E5_LARGE = "intfloat/multilingual-e5-large"
     KAKAOBANK_DEBERTA = "kakaobank/kf-deberta-base"
-    QWEN_EMBEDDING = "Qwen/Qwen3-Embedding-0.6B"
-    EMBEDDING_GEMMA = "google/embeddinggemma-300m"
 
 
 @dataclass
@@ -62,7 +62,25 @@ MODEL_CONFIGS: Dict[EmbeddingModelType, ModelConfig] = {
         notes="경량 모델, 빠른 추론 속도, 100개 언어 지원, prefix 필수 사용"
     ),
 
-    # 2. KakaoBank KF-DeBERTa Base (한국어 특화)
+    # 2. Multilingual E5 Base (균형잡힌 성능)
+    EmbeddingModelType.MULTILINGUAL_E5_BASE: ModelConfig(
+        model_name="intfloat/multilingual-e5-base",
+        display_name="E5-Base (Multilingual)",
+        dimension=768,
+        max_seq_length=512,
+        batch_size=48,
+        normalize_embeddings=True,
+        pooling_mode="mean",
+        trust_remote_code=False,
+        extra_params={
+            "query_prefix": "query: ",  # E5 모델은 쿼리에 prefix 필수
+            "passage_prefix": "passage: ",  # 문서에도 prefix 필수
+            "torch_dtype": "float32"  # E5는 float32 권장
+        },
+        notes="균형잡힌 성능, 768차원, 100개 언어 지원, prefix 필수 사용"
+    ),
+
+    # 3. KakaoBank KF-DeBERTa Base (한국어 특화)
     EmbeddingModelType.KAKAOBANK_DEBERTA: ModelConfig(
         model_name="kakaobank/kf-deberta-base",
         display_name="KakaoBank DeBERTa",
@@ -79,48 +97,18 @@ MODEL_CONFIGS: Dict[EmbeddingModelType, ModelConfig] = {
         notes="한국어 금융 데이터 특화, MIT 라이선스, DeBERTa-v2 아키텍처"
     ),
 
-    # 3. Qwen3 Embedding 0.6B (고성능, 긴 문맥)
-    EmbeddingModelType.QWEN_EMBEDDING: ModelConfig(
-        model_name="Qwen/Qwen3-Embedding-0.6B",
-        display_name="Qwen3 Embedding 0.6B",
-        dimension=1024,  # 기본 1024, MRL로 32~1024 가변 지원
-        max_seq_length=32768,  # 32k 토큰 지원 (매우 긴 문맥)
+    # 4. Multilingual-E5-Large (HuggingFace: intfloat/multilingual-e5-large)
+    EmbeddingModelType.MULTILINGUAL_E5_LARGE: ModelConfig(
+        model_name="intfloat/multilingual-e5-large",
+        display_name="E5-Large (Multilingual)",
+        dimension=1024,  # HF 모델 카드 명시: 1024차원
+        max_seq_length=512,  # HF 모델 카드: 최대 512 토큰
         batch_size=16,
         normalize_embeddings=True,
-        pooling_mode="last_token",  # Qwen3는 last token pooling 사용
-        trust_remote_code=True,
-        extra_params={
-            "padding_side": "left",  # Qwen3는 left padding 필수
-            "torch_dtype": "float16",  # float16 권장
-            "attn_implementation": "flash_attention_2",  # FlashAttention2 지원
-            "query_instruction": "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery: ",  # 쿼리용 instruction
-            "matryoshka_dims": [32, 64, 128, 256, 512, 1024]  # MRL 지원 차원
-        },
-        notes="MTEB 1위, 100개 언어, 32k 문맥, MRL 지원, instruction-aware"
-    ),
-
-    # 4. Google EmbeddingGemma 300M
-    EmbeddingModelType.EMBEDDING_GEMMA: ModelConfig(
-        model_name="google/embeddinggemma-300m",
-        display_name="EmbeddingGemma 300M",
-        dimension=768,  # 고정 768차원 사용 (MRL 비활성화)
-        max_seq_length=2048,  # 2048 토큰
-        batch_size=32,
-        normalize_embeddings=True,
         pooling_mode="mean",
-        trust_remote_code=True,
-        extra_params={
-            "torch_dtype": "bfloat16",  # float16 미지원, bfloat16 또는 float32 사용
-            "matryoshka_dims": [768],  # MRL 비활성화, 768차원만 사용
-            "task_prompts": {
-                "retrieval_query": "task: search result | query: ",
-                "retrieval_document": "title: none | text: ",
-                "classification": "task: classification | query: ",
-                "clustering": "task: clustering | query: ",
-                "similarity": "task: sentence similarity | query: "
-            }
-        },
-        notes="Google Gemma3 기반, 100개 언어, task-specific prompts, 768차원 고정"
+        trust_remote_code=False,
+        extra_params={},
+        notes="E5 Large 다국어 임베딩 (1024차원, 512 토큰). 참조: https://huggingface.co/intfloat/multilingual-e5-large"
     ),
 
 }
@@ -208,23 +196,11 @@ def print_usage_recommendations():
             "✅ 상업용 프로젝트 (MIT 라이선스)",
             "⚠️ 512 토큰 제한"
         ],
-        "Qwen3 Embedding 0.6B": [
-            "✅ 긴 문서 처리 (최대 32k 토큰)",
-            "✅ 높은 검색 정확도 필요시 (MTEB 1위급)",
-            "✅ MRL로 임베딩 차원 유연한 조정 필요시",
-            "⚠️ left padding 및 instruction 필수"
-        ],
-        "EmbeddingGemma 300M": [
-            "✅ task-specific 최적화 필요시",
-            "✅ Google 생태계 통합",
-            "✅ 균형잡힌 성능/속도",
-            "⚠️ float16 미지원 (bfloat16 또는 float32 사용)"
-        ],
-        "Jina Embeddings v4": [
-            "✅ 멀티모달 검색 (텍스트+이미지)",
-            "✅ 최신 기술 및 최고 성능 필요시",
-            "✅ 긴 문맥 처리 (32k)",
-            "⚠️ 큰 모델 크기 (3B 기반), GPU 메모리 요구량 높음"
+        "E5-Large (Multilingual)": [
+            "✅ 높은 정확도가 필요한 경우",
+            "✅ 대규모 데이터셋 처리",
+            "✅ 다국어 지원",
+            "⚠️ 큰 모델 크기, GPU 메모리 요구량 높음"
         ]
     }
     

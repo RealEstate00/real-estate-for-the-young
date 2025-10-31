@@ -21,7 +21,7 @@ class GenerationConfig:
     temperature: float = 0.7
     max_tokens: int = 1000
     top_p: float = 0.9
-    timeout: int = 30
+    timeout: int = 120  # 타임아웃을 120초로 증가 (LLM 응답 대기 시간)
 
 
 @dataclass

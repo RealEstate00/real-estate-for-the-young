@@ -7,6 +7,8 @@
 
 import logging
 import re
+import requests
+import time
 from typing import List, Dict, Any, Optional, Callable
 from collections import Counter
 import math
@@ -50,9 +52,39 @@ class BaseReranker:
 class KeywordReranker(BaseReranker):
     """키워드 기반 리랭커"""
 
-    def __init__(self, weight: float = 0.3):
+    def __init__(
+        self,
+        weight: float = 0.3,
+        use_llm_extraction: bool = True,
+        llm_generator = None,
+        llm_model: str = "gemma3:4b"
+    ):
+        """
+        Args:
+            weight: 키워드 점수의 가중치 (0.0 ~ 1.0)
+            use_llm_extraction: LLM을 사용한 키워드 추출 여부 (기본값: True)
+            llm_generator: LLM 생성기 인스턴스 (None이면 자동 초기화)
+            llm_model: LLM 모델명 (기본값: gemma3:4b)
+        """
         super().__init__("KeywordReranker")
         self.weight = weight
+        self.use_llm_extraction = use_llm_extraction
+        self.llm_model = llm_model
+        self._keyword_cache = {}  # 키워드 추출 결과 캐싱
+        
+        # LLM 추출 활성화 시 LLM 생성기 자동 초기화
+        if self.use_llm_extraction:
+            if llm_generator is None:
+                from ..generation.generator import OllamaGenerator
+                self.llm_generator = OllamaGenerator(
+                    base_url="http://localhost:11434",
+                    default_model=self.llm_model
+                )
+                logger.info(f"KeywordReranker: LLM 키워드 추출 활성화 (모델: {self.llm_model})")
+            else:
+                self.llm_generator = llm_generator
+        else:
+            self.llm_generator = None
 
     def rerank(
         self,
@@ -88,10 +120,124 @@ class KeywordReranker(BaseReranker):
 
     def _extract_keywords(self, text: str) -> List[str]:
         """텍스트에서 키워드 추출"""
+        if not text:
+            return []
+            
+        # 캐시 확인
+        if text in self._keyword_cache:
+            return self._keyword_cache[text]
+        
+        # LLM 기반 추출
+        if self.use_llm_extraction and self.llm_generator:
+            keywords = self._extract_keywords_with_llm(text)
+        else:
+            # 정규식 기반 추출 (기본 방식)
+            keywords = self._extract_keywords_with_regex(text)
+        
+        # 캐시 저장
+        self._keyword_cache[text] = keywords
+        return keywords
+    
+    def _extract_keywords_with_regex(self, text: str) -> List[str]:
+        """정규식 기반 키워드 추출 (기본 방식)"""
         # 한글, 영문, 숫자만 추출
         words = re.findall(r'[가-힣a-zA-Z0-9]+', text.lower())
         # 2글자 이상만 유효한 키워드로 간주
         return [word for word in words if len(word) >= 2]
+    
+    def _extract_keywords_with_llm(self, text: str) -> List[str]:
+        """LLM을 사용한 키워드 추출"""
+        try:
+            # 프롬프트 생성
+            prompt = self._create_keyword_extraction_prompt(text)
+            
+            # LLM 직접 호출 (generate 메서드의 프롬프트 템플릿 우회)
+            
+            if isinstance(self.llm_generator, type):  # 클래스인 경우
+                raise ValueError("llm_generator must be an instance, not a class")
+            
+            # Ollama API 직접 호출
+            api_url = self.llm_generator.api_url
+            payload = {
+                "model": self.llm_model,
+                "prompt": prompt,
+                "stream": False,
+                "options": {
+                    "temperature": 0.3,
+                    "num_predict": 200
+                }
+            }
+            
+            start_time = time.time()
+            response = requests.post(
+                api_url,
+                json=payload,
+                timeout=10
+            )
+            response.raise_for_status()
+            
+            result = response.json()
+            answer_text = result.get("response", "").strip()
+            
+            # 키워드 파싱
+            keywords = self._parse_keywords_from_llm_response(answer_text)
+            
+            if not keywords:
+                # LLM 실패 시 정규식 방식으로 fallback
+                logger.warning(f"LLM keyword extraction failed, falling back to regex. Text: {text[:50]}...")
+                return self._extract_keywords_with_regex(text)
+            
+            return keywords
+            
+        except Exception as e:
+            logger.warning(f"LLM keyword extraction error: {e}, falling back to regex")
+            return self._extract_keywords_with_regex(text)
+    
+    def _create_keyword_extraction_prompt(self, text: str) -> str:
+        """키워드 추출용 프롬프트 생성"""
+        prompt = f"""다음 텍스트에서 핵심 키워드만 추출해주세요. 
+
+텍스트:
+{text}
+
+지시사항:
+1. 청년 주거 정책 도메인에 관련된 핵심 키워드만 추출
+2. 동의어나 유사어도 함께 고려 (예: "대출" = "융자", "차입")
+3. 2글자 이상의 단어만 추출
+4. 키워드는 쉼표로 구분하여 나열
+5. 불필요한 설명 없이 키워드만 출력
+
+키워드:"""
+        return prompt
+    
+    def _parse_keywords_from_llm_response(self, response: str) -> List[str]:
+        """LLM 응답에서 키워드 파싱"""
+        if not response:
+            return []
+        
+        # "키워드:" 또는 "키워드:" 이후의 텍스트 추출
+        lines = response.split('\n')
+        keywords_line = None
+        
+        for line in lines:
+            if '키워드' in line and ':' in line:
+                keywords_line = line.split(':', 1)[-1].strip()
+                break
+        
+        # 키워드 라인을 찾지 못하면 마지막 줄 사용
+        if keywords_line is None:
+            keywords_line = lines[-1].strip()
+        
+        # 쉼표 또는 줄바꿈으로 분리
+        keywords = []
+        for part in keywords_line.replace('\n', ',').split(','):
+            keyword = part.strip().lower()
+            # 불필요한 문자 제거
+            keyword = re.sub(r'[^\w가-힣]', '', keyword)
+            if len(keyword) >= 2:  # 2글자 이상만
+                keywords.append(keyword)
+        
+        return keywords
 
 
 class LengthReranker(BaseReranker):

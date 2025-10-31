@@ -4,10 +4,9 @@
 RAG 시스템 통합 CLI
 
 Usage:
-  rag eval                  # 기본 평가 (사전 정의 쿼리로 검색 성능 평가)
-  rag model --model E5      # 단일 모델 평가
-  rag all                   # 전체 모델 평가
-  rag reranking             # 리랭킹 효과 비교
+  rag eval embedding <query>      # 임베딩 모델 비교 평가
+  rag eval answering [query]      # 답변 비교 평가 (query 미지정 시 test_queries.txt 사용)
+  rag generate <query>             # RAG 전체 파이프라인 (검색 + 증강 + 생성)
 """
 
 import os
@@ -23,7 +22,6 @@ sys.path.insert(0, str(project_root))
 
 from backend.services.rag.models.config import EmbeddingModelType, get_model_config
 from backend.services.rag.core.evaluator import RAGEvaluator
-from backend.services.rag.core.embedder import MultiModelEmbedder
 from backend.services.rag.rag_system import RAGSystem
 from backend.services.rag.retrieval.reranker import KeywordReranker, SemanticReranker, CombinedReranker
 from backend.services.rag.augmentation.formatters import (
@@ -215,47 +213,13 @@ def print_reranking_comparison(reranking_effects: dict):
 
     print("="*100)
 
-
-def embed_all_models(
-    data_file: str,
-    db_config: dict
-) -> bool:
-    """5개 모델로 데이터 임베딩"""
-    try:
-        logger.info("=== 5개 모델 임베딩 생성 시작 ===")
-
-        if not Path(data_file).exists():
-            logger.error(f"데이터 파일을 찾을 수 없습니다: {data_file}")
-            return False
-
-        embedder = MultiModelEmbedder(data_file, db_config, skip_chunking=True)
-        results = embedder.embed_all_models()
-
-        # 결과 요약 출력
-        print(embedder.get_summary())
-
-        # 성공한 모델 확인
-        successful = [k for k, v in results.items() if v.get("status") == "success"]
-
-        if successful:
-            logger.info(f"✅ {len(successful)}개 모델 임베딩 완료")
-            return True
-        else:
-            logger.error("❌ 모든 모델 임베딩 실패")
-            return False
-
-    except Exception as e:
-        logger.exception(f"임베딩 생성 중 오류 발생: {e}")
-        return False
-
-
 def get_model_type_from_name(model_name: str) -> EmbeddingModelType:
     """모델 이름을 EmbeddingModelType으로 변환"""
     mapping = {
-        "E5": EmbeddingModelType.MULTILINGUAL_E5_SMALL,
-        "KAKAO": EmbeddingModelType.KAKAOBANK_DEBERTA,
-        "QWEN": EmbeddingModelType.QWEN_EMBEDDING,
-        "GEMMA": EmbeddingModelType.EMBEDDING_GEMMA
+        "E5_SMALL": EmbeddingModelType.MULTILINGUAL_E5_SMALL,
+        "E5_BASE": EmbeddingModelType.MULTILINGUAL_E5_BASE,
+        "E5_LARGE": EmbeddingModelType.MULTILINGUAL_E5_LARGE,
+        "KAKAO": EmbeddingModelType.KAKAOBANK_DEBERTA
     }
     return mapping.get(model_name.upper(), EmbeddingModelType.MULTILINGUAL_E5_SMALL)
 
@@ -357,10 +321,10 @@ def run_search_command(args, db_config: dict) -> bool:
         model_type = get_model_type_from_name(args.model)
         formatter = get_formatter_from_name(args.format)
         
-        # Reranker 설정
+        # Reranker 설정 (리랭킹 사용 시 LLM 키워드 추출 기본 활성화)
         reranker = None
         if args.reranking:
-            reranker = KeywordReranker()
+            reranker = KeywordReranker()  # 기본값: LLM 키워드 추출 활성화, gemma3:4b 사용
         
         # RAG 시스템 초기화
         rag_system = RAGSystem(
@@ -401,10 +365,10 @@ def run_augment_command(args, db_config: dict) -> bool:
         model_type = get_model_type_from_name(args.model)
         formatter = get_formatter_from_name(args.format)
         
-        # Reranker 설정
+        # Reranker 설정 (리랭킹 사용 시 LLM 키워드 추출 기본 활성화)
         reranker = None
         if args.reranking:
-            reranker = KeywordReranker()
+            reranker = KeywordReranker()  # 기본값: LLM 키워드 추출 활성화, gemma3:4b 사용
         
         # RAG 시스템 초기화
         rag_system = RAGSystem(
@@ -452,65 +416,52 @@ def run_augment_command(args, db_config: dict) -> bool:
         return False
 
 
-def run_rag_eval_command(args, db_config: dict) -> bool:
-    """RAG 시스템 평가 명령어 실행"""
+def run_eval_embedding_command(args, db_config: dict) -> bool:
+    """임베딩 모델 비교 평가 명령어 실행"""
     try:
-        model_type = get_model_type_from_name(args.model)
-
-        # Reranker 설정
-        reranker = None
-        if args.reranking:
-            reranker = KeywordReranker()
-
-        # RAG 시스템 초기화
-        rag_system = RAGSystem(
-            model_type=model_type,
-            db_config=db_config,
-            reranker=reranker
-        )
-
-        # 테스트 쿼리 로드
-        test_queries = [
-            "주거복지사업이란 무엇인가요?",
-            "청년 주거 지원 정책은 어떤 것들이 있나요?",
-            "임대주택 신청 방법을 알려주세요",
-            "주거급여 신청 자격은 무엇인가요?",
-            "공공임대주택과 민간임대주택의 차이점은 무엇인가요?"
+        import subprocess
+        import sys
+        
+        # compare_embedding_models.py 실행
+        script_path = Path(__file__).resolve().parent / "compare_embedding_models.py"
+        
+        cmd = [
+            sys.executable,
+            str(script_path),
+            args.query
         ]
-
-        print(f"\n🧪 RAG 시스템 평가 중... (모델: {args.model}, 쿼리: {len(test_queries)}개)")
-
-        # 평가 실행
-        eval_results = rag_system.evaluate_retrieval(
-            queries=test_queries,
-            top_k=args.top_k,
-            use_reranker=args.reranking
-        )
-
-        # 결과 출력
-        print(f"\n📊 RAG 시스템 평가 결과")
-        print("=" * 80)
-        print(f"총 쿼리 수: {eval_results['total_queries']}")
-        print(f"성공한 쿼리: {eval_results['successful_queries']}")
-        print(f"실패한 쿼리: {eval_results['failed_queries']}")
-        print(f"평균 검색 시간: {eval_results['avg_time_ms']:.2f}ms")
-        print(f"쿼리당 평균 문서 수: {eval_results['avg_documents_per_query']:.1f}")
-        print(f"평균 유사도: {eval_results['avg_similarity']:.3f}")
-
-        # 개별 쿼리 결과
-        print(f"\n📋 개별 쿼리 결과")
-        print("-" * 80)
-        for i, query_result in enumerate(eval_results['queries'], 1):
-            if query_result['success']:
-                print(f"{i}. {query_result['query'][:50]}...")
-                print(f"   문서 수: {query_result['documents_found']}, 유사도: {query_result['avg_similarity']:.3f}, 시간: {query_result['time_ms']:.1f}ms")
-            else:
-                print(f"{i}. {query_result['query'][:50]}... (실패: {query_result['error']})")
-
+        
+        result = subprocess.run(cmd, check=False)
+        if result.returncode != 0:
+            print(f"\n❌ 임베딩 모델 평가 실패 (exit code: {result.returncode})")
+            return False
         return True
-
+        
     except Exception as e:
-        logger.exception(f"RAG 평가 중 오류 발생: {e}")
+        logger.exception(f"임베딩 모델 평가 중 오류 발생: {e}")
+        print(f"\n❌ 임베딩 모델 평가 중 오류: {e}")
+        return False
+
+
+def run_eval_answering_command(args, db_config: dict) -> bool:
+    """답변 비교 평가 명령어 실행"""
+    try:
+        import subprocess
+        import sys
+        
+        # compare_answers_simple.py 실행
+        script_path = Path(__file__).resolve().parent / "compare_answers_simple.py"
+        
+        cmd = [sys.executable, str(script_path)]
+        
+        if args.query:
+            cmd.append(args.query)
+        
+        result = subprocess.run(cmd, check=False)
+        return result.returncode == 0
+        
+    except Exception as e:
+        logger.exception(f"답변 비교 평가 중 오류 발생: {e}")
         return False
 
 
@@ -520,10 +471,10 @@ def run_generate_command(args, db_config: dict) -> bool:
         model_type = get_model_type_from_name(args.model)
         formatter = get_formatter_from_name(args.format)
 
-        # Reranker 설정
+        # Reranker 설정 (리랭킹 사용 시 LLM 키워드 추출 기본 활성화)
         reranker = None
         if args.reranking:
-            reranker = KeywordReranker()
+            reranker = KeywordReranker()  # 기본값: LLM 키워드 추출 활성화, gemma3:4b 사용
 
         # LLM Generator 초기화
         llm_generator = OllamaGenerator(
@@ -660,68 +611,25 @@ def main():
 
     subparsers = parser.add_subparsers(dest="command", help="사용 가능한 명령어")
 
-    # 모델 목록
-    p_list = subparsers.add_parser("list", help="사용 가능한 모델 목록")
-
-    # 단일 모델 평가
-    p_model = subparsers.add_parser("model", help="단일 모델 평가")
-    p_model.add_argument(
-        "--model",
-        type=str,
-        required=True,
-        choices=[m.name for m in EmbeddingModelType],
-        help="평가할 모델"
-    )
-    p_model.add_argument("--top-k", type=int, default=5, help="검색할 결과 수 (기본: 5)")
-    p_model.add_argument("--reranking", action="store_true", help="리랭킹 사용")
-    p_model.add_argument("--no-save", action="store_true", help="결과 저장 안 함")
-    p_model.add_argument("--save-search-results", action="store_true", help="검색 결과도 함께 저장 (파일 크기 증가)")
-
-    # 전체 모델 평가
-    p_all = subparsers.add_parser("all", help="전체 모델 평가")
-    p_all.add_argument("--top-k", type=int, default=5, help="검색할 결과 수 (기본: 5)")
-    p_all.add_argument("--no-save", action="store_true", help="결과 저장 안 함")
-    p_all.add_argument("--save-search-results", action="store_true", help="검색 결과도 함께 저장 (파일 크기 증가)")
-
-    # 리랭킹 비교
-    p_rerank = subparsers.add_parser("reranking", help="리랭킹 전후 성능 비교")
-    p_rerank.add_argument("--top-k", type=int, default=5, help="검색할 결과 수 (기본: 5)")
-    p_rerank.add_argument("--no-save", action="store_true", help="결과 저장 안 함")
-    p_rerank.add_argument("--save-search-results", action="store_true", help="검색 결과도 함께 저장 (파일 크기 증가)")
-
-    # RAG 시스템 검색
-    p_search = subparsers.add_parser("search", help="RAG 시스템으로 검색")
-    p_search.add_argument("query", type=str, help="검색 쿼리")
-    p_search.add_argument("--model", type=str, default="E5", choices=["E5", "KAKAO", "QWEN", "GEMMA"], help="사용할 모델")
-    p_search.add_argument("--top-k", type=int, default=5, help="검색할 결과 수")
-    p_search.add_argument("--reranking", action="store_true", help="리랭킹 사용")
-    p_search.add_argument("--format", type=str, default="prompt", choices=["prompt", "markdown", "json", "policy", "enhanced"], help="출력 포맷")
-    
-    # RAG 시스템 증강
-    p_augment = subparsers.add_parser("augment", help="검색 결과 증강")
-    p_augment.add_argument("query", type=str, help="검색 쿼리")
-    p_augment.add_argument("--model", type=str, default="E5", choices=["E5", "KAKAO", "QWEN", "GEMMA"], help="사용할 모델")
-    p_augment.add_argument("--top-k", type=int, default=5, help="검색할 결과 수")
-    p_augment.add_argument("--reranking", action="store_true", help="리랭킹 사용")
-    p_augment.add_argument("--format", type=str, default="prompt", choices=["prompt", "markdown", "json", "policy", "enhanced"], help="출력 포맷")
-    p_augment.add_argument("--context-type", type=str, default="general", choices=["general", "qa", "summarization"], help="컨텍스트 타입")
-    p_augment.add_argument("--save", action="store_true", help="결과를 마크다운 파일로 저장")
-    p_augment.add_argument("--output-dir", type=str, default="results", help="저장할 디렉토리")
-    
     # RAG 시스템 평가
-    p_rag_eval = subparsers.add_parser("eval", help="RAG 시스템 전체 평가")
-    p_rag_eval.add_argument("--model", type=str, default="E5", choices=["E5", "KAKAO", "QWEN", "GEMMA"], help="사용할 모델")
-    p_rag_eval.add_argument("--top-k", type=int, default=5, help="검색할 결과 수")
-    p_rag_eval.add_argument("--reranking", action="store_true", help="리랭킹 사용")
-    p_rag_eval.add_argument("--no-save", action="store_true", help="결과 저장 안 함")
+    p_rag_eval = subparsers.add_parser("eval", help="RAG 시스템 평가")
+    eval_subparsers = p_rag_eval.add_subparsers(dest="eval_mode", help="평가 모드")
+    
+    # 임베딩 모델 비교 평가
+    p_eval_embedding = eval_subparsers.add_parser("embedding", help="임베딩 모델 비교 평가 (compare_embedding_models.py)")
+    p_eval_embedding.add_argument("query", type=str, help="테스트 쿼리")
+    
+    # 답변 비교 평가
+    p_eval_answering = eval_subparsers.add_parser("answering", help="임베딩 모델별 답변 비교 평가 (compare_answers_simple.py)")
+    p_eval_answering.add_argument("query", type=str, nargs="?", default=None, help="테스트 쿼리 (미지정 시 --queries-file 사용)")
 
     # RAG 생성 (전체 파이프라인)
     p_generate = subparsers.add_parser("generate", help="RAG 전체 파이프라인 (검색 + 증강 + 생성)")
     p_generate.add_argument("query", type=str, help="질문")
-    p_generate.add_argument("--model", type=str, default="E5", choices=["E5", "KAKAO", "QWEN", "GEMMA"], help="임베딩 모델")
+    p_generate.add_argument("--model", type=str, default="E5_SMALL", choices=["E5_SMALL", "E5_BASE", "E5_LARGE", "KAKAO"], help="임베딩 모델")
     p_generate.add_argument("--llm-model", type=str, default="gemma2:2b", help="LLM 모델 (예: gemma2:2b)")
     p_generate.add_argument("--top-k", type=int, default=5, help="검색할 결과 수")
-    p_generate.add_argument("--reranking", action="store_true", help="리랭킹 사용")
+    p_generate.add_argument("--reranking", action="store_true", help="리랭킹 사용 (LLM 키워드 추출 포함, gemma3:4b)")
     p_generate.add_argument("--format", type=str, default="enhanced", choices=["prompt", "markdown", "json", "policy", "enhanced"], help="컨텍스트 포맷")
     p_generate.add_argument("--context-type", type=str, default="general", choices=["general", "qa", "summarization"], help="컨텍스트 타입")
     p_generate.add_argument("--temperature", type=float, default=0.7, help="생성 온도 (0.0-1.0)")
@@ -730,14 +638,6 @@ def main():
     p_generate.add_argument("--save", action="store_true", help="결과를 JSON 파일로 저장")
     p_generate.add_argument("--output-dir", type=str, default="results", help="저장할 디렉토리")
 
-    # 임베딩 생성
-    p_embed = subparsers.add_parser("embed", help="4개 모델로 데이터 임베딩")
-    p_embed.add_argument(
-        "--data-file",
-        type=str,
-        required=True,
-        help="임베딩할 JSON 데이터 파일"
-    )
 
     args = parser.parse_args()
 
@@ -761,56 +661,22 @@ def main():
     success = False
 
     # 명령어 실행
-    if args.command == "list":
-        list_models()
-        success = True
-
-    elif args.command == "model":
-        model_type = EmbeddingModelType[args.model]
-        success = evaluate_single_model(
-            model_type=model_type,
-            db_config=db_config,
-            top_k=args.top_k,
-            use_reranking=args.reranking,
-            save_results=not args.no_save,
-            save_search_results=args.save_search_results
-        )
-
-    elif args.command == "all":
-        success = evaluate_all_models(
-            db_config=db_config,
-            top_k=args.top_k,
-            compare_reranking=False,
-            save_results=not args.no_save,
-            save_search_results=args.save_search_results
-        )
-
-    elif args.command == "reranking":
-        success = evaluate_all_models(
-            db_config=db_config,
-            top_k=args.top_k,
-            compare_reranking=True,
-            save_results=not args.no_save,
-            save_search_results=args.save_search_results
-        )
-    
-    elif args.command == "search":
-        success = run_search_command(args, db_config)
-    
-    elif args.command == "augment":
-        success = run_augment_command(args, db_config)
-    
-    elif args.command == "eval":
-        success = run_rag_eval_command(args, db_config)
+    if args.command == "eval":
+        if not args.eval_mode:
+            parser.parse_args([args.command, "--help"])
+            sys.exit(1)
+        
+        if args.eval_mode == "embedding":
+            success = run_eval_embedding_command(args, db_config)
+        elif args.eval_mode == "answering":
+            success = run_eval_answering_command(args, db_config)
+        else:
+            logger.error(f"알 수 없는 평가 모드: {args.eval_mode}")
+            success = False
 
     elif args.command == "generate":
         success = run_generate_command(args, db_config)
 
-    elif args.command == "embed":
-        success = embed_all_models(
-            data_file=args.data_file,
-            db_config=db_config
-        )
 
     if success:
         logger.info(f"{args.command} 명령이 성공적으로 완료되었습니다.")
