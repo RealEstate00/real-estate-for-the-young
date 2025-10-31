@@ -21,6 +21,7 @@ Commands:
                       - drop housing: Drop housing schema tables
                       - drop infra: Drop infra schema tables
                       - drop rtms: Drop rtms schema tables
+                      - drop vector_db: Drop vector_db schema tables
   reset               Reset database (drop + create)
   list                List all tables
   structure <table>   Show table structure
@@ -59,7 +60,7 @@ def create_schemas():
     try:
         with engine.connect() as conn:
             # 스키마 생성
-            schemas = ['infra', 'housing', 'rtms']
+            schemas = ['infra', 'housing', 'rtms', 'vector_db']
             for schema in schemas:
                 conn.execute(text(f"CREATE SCHEMA IF NOT EXISTS {schema}"))
                 print(f"✅ {schema} 스키마 생성 완료")
@@ -79,10 +80,14 @@ def drop_tables(schema_name=None):
     """
     if schema_name:
         print(f"🗑️  {schema_name} 스키마의 모든 테이블을 삭제합니다...")
+        if schema_name == "vector_db":
+            # vector_db는 CASCADE로 삭제
+            drop_vector_db_schema()
+            return
         schemas_to_drop = [schema_name]
     else:
         print("🗑️  모든 스키마의 테이블을 삭제합니다...")
-        schemas_to_drop = ['housing', 'infra', 'rtms']
+        schemas_to_drop = ['housing', 'infra', 'rtms', 'vector_db']
     
     engine = get_engine()
     try:
@@ -139,10 +144,11 @@ def show_tables():
                     t.table_schema,
                     t.table_name,
                     t.table_type,
-                    COALESCE(s.n_tup_ins, 0) as row_count
+                    COALESCE(s.n_live_tup, 0) AS row_count
                 FROM information_schema.tables t
-                LEFT JOIN pg_stat_user_tables s ON t.table_name = s.relname AND t.table_schema = s.schemaname
-                WHERE t.table_schema IN ('housing', 'infra', 'rtms')
+                LEFT JOIN pg_stat_all_tables s 
+                    ON t.table_name = s.relname AND t.table_schema = s.schemaname
+                WHERE t.table_schema IN ('housing', 'infra', 'rtms', 'vector_db')
                 ORDER BY t.table_schema, t.table_name
             """))
             
@@ -195,6 +201,22 @@ def test_db():
     else:
         print("❌ 데이터베이스 연결 실패!")
         return False
+
+def drop_vector_db_schema():
+    """vector_db 스키마 삭제"""
+    print("🗑️ vector_db 스키마 삭제 중...")
+    try:
+        engine = get_engine()
+        with engine.connect() as conn:
+            # vector_db 스키마의 모든 테이블 삭제
+            conn.execute(text("DROP SCHEMA IF EXISTS vector_db CASCADE;"))
+            conn.commit()
+        print("✅ vector_db 스키마 삭제 완료!")
+        return True
+    except Exception as e:
+        print(f"❌ vector_db 스키마 삭제 실패: {e}")
+        return False
+
 
 def main() -> None:
     # If no subcommand, print help.

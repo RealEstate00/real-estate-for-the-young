@@ -8,14 +8,124 @@ version = "0.1.0"
 description = "Real_Estate_for_the_Young"
 readme = "README.md"
 requires-python = ">=3.12,<3.14"
+dependencies = [
+    # FastAPI & Web server
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+    "uvloop>=0.20.0; python_version < \"3.13\" and sys_platform != \"win32\"",
+    "httptools>=0.6.1; python_version < \"3.13\" and sys_platform != \"win32\"",
+    "gunicorn==21.2.0",
+    "orjson>=3.10.7",
+    
+    # Database (PostgreSQL-first)
+    "psycopg[binary]==3.2.3",
+    "psycopg2-binary==2.9.11",
+    "sqlalchemy==2.0.23",
+    "alembic>=1.13.0",
+    "pgvector>=0.2.5",
+    
+    # Redis & task queue
+    "redis==5.0.1",
+    "celery==5.3.4",
+    
+    # Crawling
+    "playwright>=1.46",
+    "beautifulsoup4==4.12.2",
+    "requests==2.31.0",
+    "lxml>=5.2.1",
+    
+    # OCR & PDF Processing
+    "pdfplumber>=0.10.0",
+    
+    # Data processing
+    "pandas==2.2.3",
+    "numpy==2.1.3",
+    "pydantic>=2.9.0",
+    "pydantic-settings==2.5.0",
+    "chardet==5.2.0",
+    
+    # Torch (CPU wheel 인덱스 명시)
+    "torch>=2.6.0",
+    "torchvision>=0.20.0",
+    "torchaudio>=2.6.0",
+    
+    # Vector Database & Embeddings
+    "chromadb>=0.5.0",
+    "sentence-transformers>=3.0.0",
+    "peft>=0.13.0",
+    "tqdm>=4.65.0",
+    "pgvector>=0.2.5,<0.4",
+    
+    # Utilities
+    "python-multipart==0.0.6",
+    "python-jose[cryptography]==3.3.0",
+    "passlib[bcrypt]==1.7.4",
+    "python-dotenv==1.0.0",
+    "pyyaml==6.0.1",
+    "typer>=0.12.0",
+    "rich>=13.7.1",
+    
+    # Monitoring & logging
+    "prometheus-client==0.19.0",
+    "structlog>=24.4.0",
+    "loguru==0.7.2",
+    
+    # Web app / notebooks
+    "streamlit>=1.36.0",
+    "jupyter==1.0.0",
+    "seaborn==0.13.0",
+    
+    # LangChain 코어
+    "langchain>=0.3.0",
+    "langchain-community>=0.3.0",
+    "langchain-core>=0.3.0",
+    "langchain-postgres>0.0.12,<0.0.14",
+    "langchain-ollama>=0.2.0",
+    "langchain-openai>=0.2.0",
+    "langchain_huggingface>=0.1.0",
+    "langchain_groq>=0.1.0",
+    "groq>=0.9.0",
+    "transformers>=4.50.0",
+    "tokenizers>=0.20.0",
+    
+    # NLP & Text Processing
+    "nltk>=3.8.1",
+    "spacy>=3.7.0",
+    "openai>=1.0.0",
+    "tiktoken>=0.5.0",
+    "unstructured>=0.11.0",
+    
+    # Korean NLP (추가)
+    "konlpy>=0.6.0",  # 한국어 자연어 처리
+    "mecab-python3>=1.0.0",  # MeCab 한국어 형태소 분석기
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.2",
+    "pytest-asyncio>=0.24.0",
+    "black>=24.8.0",
+    "isort>=5.13.0",
+    "ruff>=0.6.0",
+    "greenlet>=3.1; python_version < \"3.13\"",
+]
 
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["backend*"]    # discover backend, backend.services, ...
+exclude = ["frontend*"]   # exclude frontend (React project)
 
 [project.scripts]
+# 개발 서버 실행 (일반 설치)
+api = "backend.services.api.cli.api_cli:main"
+dev = "dev:main"
+
+# 데이터 관리 CLI
 data-collection-housing = "backend.services.data_collection.cli.housing.__main__:main"
 data-collection-infra = "backend.services.data_collection.cli.infra.__main__:main"
 data-collection-rtms = "backend.services.data_collection.cli.rtms.__main__:main"
 data-db = "backend.services.db.cli.db_cli:main"
 data-load = "backend.services.loading.cli.load_cli:main"
+
+# RAG 시스템 CLI
+rag = "backend.services.rag.cli.rag_cli:main"
