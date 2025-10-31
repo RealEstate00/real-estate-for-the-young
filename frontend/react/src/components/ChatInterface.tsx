@@ -12,19 +12,43 @@ interface Message extends ChatMessage {
   sources?: SourceInfo[];
 }
 
-// 마크다운 볼드 처리 함수
-const formatMessage = (text: string) => {
-  return text
-    .replace(
-      /\*\*(\d+)\. \[(.*?)\]\*\*/g,
-      '<h3 class="text-xl font-bold text-gray-900 mb-3 mt-6">$1. [$2]</h3>'
-    )
-    .replace(
-      /\| \*\*(.*?)\*\* \|/g,
-      '<div class="font-bold text-gray-800 mt-4 mb-2 text-base">| $1 |</div>'
-    )
-    .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
-    .replace(/\n/g, "<br />");
+// 마크다운 처리 함수
+const formatMessage = (text: string | undefined | null) => {
+  // undefined나 null인 경우 빈 문자열 반환
+  if (!text) {
+    return "";
+  }
+
+  return (
+    text
+      // 헤더 처리 (## 헤더)
+      .replace(
+        /^##\s+(.+)$/gm,
+        '<h2 class="text-2xl font-bold text-gray-900 mb-3 mt-6 leading-tight">$1</h2>'
+      )
+      .replace(
+        /^###\s+(.+)$/gm,
+        '<h3 class="text-xl font-bold text-gray-900 mb-2 mt-4 leading-tight">$1</h3>'
+      )
+      // 번호 리스트 형식 처리
+      .replace(
+        /\*\*(\d+)\.\s+(.+?)\*\*/g,
+        '<h3 class="text-xl font-bold text-gray-900 mb-3 mt-4 leading-tight">$1. $2</h3>'
+      )
+      .replace(
+        /\*\*(\d+)\.\s+\[(.+?)\]\*\*/g,
+        '<h3 class="text-xl font-bold text-gray-900 mb-3 mt-4 leading-tight">$1. [$2]</h3>'
+      )
+      // 테이블 형식 처리
+      .replace(
+        /\| \*\*(.*?)\*\* \|/g,
+        '<div class="font-bold text-gray-800 mt-4 mb-2 text-lg leading-relaxed">| $1 |</div>'
+      )
+      // 볼드 처리
+      .replace(/\*\*(.*?)\*\*/g, "<strong class='font-semibold'>$1</strong>")
+      // 줄바꿈
+      .replace(/\n/g, "<br />")
+  );
 };
 
 export default function ChatInterface() {
@@ -57,18 +81,38 @@ export default function ChatInterface() {
 
       const aiMessage: Message = {
         role: "assistant",
-        content: response.answer || response.message,
-        sources: response.sources,
+        content: response.message,
+        // 상위 1개 source만 사용
+        sources:
+          response.sources && response.sources.length > 0
+            ? [response.sources[0]]
+            : [],
         timestamp: new Date(),
       };
 
       setMessages((prev) => [...prev, aiMessage]);
     } catch (error) {
       console.error("Chat error:", error);
+
+      // 상세한 에러 메시지 생성
+      let errorMessageText = "죄송합니다. 응답 중 오류가 발생했습니다.";
+      if (error instanceof Error) {
+        if (
+          error.message.includes("Failed to fetch") ||
+          error.message.includes("NetworkError")
+        ) {
+          errorMessageText =
+            "서버에 연결할 수 없습니다. API 서버가 실행 중인지 확인해주세요.\n(API 서버: http://localhost:8000)";
+        } else if (error.message.includes("HTTP error")) {
+          errorMessageText = `서버 오류가 발생했습니다: ${error.message}`;
+        } else {
+          errorMessageText = `오류: ${error.message}`;
+        }
+      }
+
       const errorMessage: Message = {
         role: "assistant",
-        content:
-          "죄송합니다. 응답 중 오류가 발생했습니다. 서버 연결을 확인해주세요.",
+        content: errorMessageText,
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, errorMessage]);
@@ -98,7 +142,10 @@ export default function ChatInterface() {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-gray-50">
+    <div
+      className="flex flex-col h-screen bg-gray-50"
+      style={{ fontSize: "1.1em" }}
+    >
       {/* Header */}
       <header className="bg-white border-b border-gray-200 shadow-sm">
         <div className="max-w-4xl mx-auto px-4 py-4 flex justify-between items-center">
@@ -177,21 +224,18 @@ export default function ChatInterface() {
                             참고 문서:
                           </p>
                         </div>
-                        <div className="space-y-1">
-                          {message.sources.map((source, idx) => (
-                            <div
-                              key={idx}
-                              className="text-xs text-gray-600 bg-gray-50 rounded px-2 py-1 text-left"
-                            >
-                              • {source.title} ({source.district})
-                              {source.address && (
-                                <div className="text-xs text-gray-500 mt-1 text-left">
-                                  {source.address}
-                                </div>
-                              )}
-                            </div>
-                          ))}
-                        </div>
+                        {/* 상위 1개 source만 표시 */}
+                        {message.sources[0] && (
+                          <div className="text-xs text-gray-600 bg-gray-50 rounded px-2 py-1 text-left">
+                            • {message.sources[0].title} (
+                            {message.sources[0].district})
+                            {message.sources[0].address && (
+                              <div className="text-xs text-gray-500 mt-1 text-left">
+                                {message.sources[0].address}
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     )}
 
