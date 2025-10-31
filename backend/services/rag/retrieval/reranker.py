@@ -6,6 +6,7 @@
 """
 
 import logging
+import os
 import re
 import requests
 import time
@@ -76,11 +77,13 @@ class KeywordReranker(BaseReranker):
         if self.use_llm_extraction:
             if llm_generator is None:
                 from ..generation.generator import OllamaGenerator
+                # 환경 변수에서 Ollama URL 읽기 (Docker에서 호스트 접근용)
+                ollama_base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
                 self.llm_generator = OllamaGenerator(
-                    base_url="http://localhost:11434",
+                    base_url=ollama_base_url,
                     default_model=self.llm_model
                 )
-                logger.info(f"KeywordReranker: LLM 키워드 추출 활성화 (모델: {self.llm_model})")
+                logger.info(f"KeywordReranker: LLM 키워드 추출 활성화 (모델: {self.llm_model}, URL: {ollama_base_url})")
             else:
                 self.llm_generator = llm_generator
         else:

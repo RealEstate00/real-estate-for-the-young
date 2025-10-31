@@ -1,0 +1,63 @@
+# .dockerignore 업데이트 - 빌드 컨텍스트 최소화
+
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+ENV/
+
+# Node
+node_modules/
+npm-debug.log*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 빌드 결과물
+dist/
+build/
+*.egg-info/
+
+# 로그
+*.log
+logs/
+
+# 데이터 (이미 volume으로 마운트됨)
+backend/data/
+backend/logs/
+
+# Docker 관련 (순환 참조 방지)
+docker-compose*.yml
+Dockerfile*
+.dockerignore
+
+# 문서 (빌드에 불필요)
+*.md
+docs/
+
+# 테스트
+.pytest_cache/
+.coverage
+htmlcov/
+
+# 임시 파일
+*.tmp
+*.bak
+*.swp

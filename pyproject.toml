@@ -117,8 +117,8 @@ exclude = ["frontend*"]   # exclude frontend (React project)
 
 [project.scripts]
 # 개발 서버 실행 (일반 설치)
-api = "backend.services.api.cli.api_cli:main"
-dev = "dev:main"
+api = "backend.services.api.cli.__main__:main"
+dev = "backend.utils.dev:main"
 
 # 데이터 관리 CLI
 data-collection-housing = "backend.services.data_collection.cli.housing.__main__:main"
