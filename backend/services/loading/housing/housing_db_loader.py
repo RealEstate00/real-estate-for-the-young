@@ -563,6 +563,6 @@ def build_db_url() -> str:
     user = _env("PG_USER", "postgres")
     pwd  = _env("PG_PASSWORD", "post1234")
     host = _env("PG_HOST", "localhost")
-    port = _env("PG_PORT", "5432")
+    port = _env("PG_PORT", "55432")
     db   = _env("PG_DB", "rey")
     return f"postgresql+psycopg2://{user}:{pwd}@{host}:{port}/{db}"

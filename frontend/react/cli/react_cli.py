@@ -22,7 +22,8 @@ def main():
     print("-" * 50)
     
     try:
-        subprocess.run(["npm", "run", "dev"])
+        # Windows에서 npm이 PowerShell 스크립트인 경우를 위해 shell=True 사용
+        subprocess.run(["npm", "run", "dev"], shell=True)
     except KeyboardInterrupt:
         print("\n🛑 React server stopped")
     except FileNotFoundError:

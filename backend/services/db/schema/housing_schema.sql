@@ -1,6 +1,7 @@
 -- =====================================================================
 -- Housing Schema (Natural-key First, dependency-safe)
 -- =====================================================================
+CREATE SCHEMA IF NOT EXISTS housing;
 SET search_path TO housing, public;
 
 -- 0) DROP views if any

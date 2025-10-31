@@ -3,6 +3,8 @@
 -- ========================================
 
 -- 스키마 설정
+CREATE SCHEMA IF NOT EXISTS infra;
+CREATE SCHEMA IF NOT EXISTS housing; -- housing 참조가 있으므로 방어적 생성
 SET search_path TO infra, housing, rtms, public;
 
 -- 1) 인프라 코드 테이블

@@ -43,9 +43,62 @@ data-load infra
 data-load rtms
 ```
 
+### 4. 서버 실행
+
+```bash
+# 1. FastAPI 백엔드 서버 시작 (첫 번째 터미널) -- 실행은 되는데 아직 서버연결이 안된듯
+api
+
+# 2. React 프론트엔드 시작 (두 번째 터미널) 
+cd frontend/react
+npm install
+cd ../..
+python -m frontend.react.cli
+```
+
+**접속 정보:**
+- FastAPI 서버: http://localhost:8000
+- FastAPI 문서: http://localhost:8000/docs
+- React 프론트엔드: http://localhost:3000
+
 ---
 
 ## 📋 명령어 목록
+
+### 웹 애플리케이션 서버
+
+#### `api` - FastAPI 백엔드 서버
+
+```bash
+# API 서버 시작
+api
+
+# API 서버 재시작 (기존 프로세스 종료 후 재시작)
+python -m backend.services.api.cli restart
+
+# 수동 실행 (Python 모듈로)
+python -m backend.services.api.cli
+```
+
+**접속 정보:**
+- API 서버: http://localhost:8000
+- API 문서 (Swagger): http://localhost:8000/docs
+- API 문서 (ReDoc): http://localhost:8000/redoc
+
+#### `python -m frontend.react.cli` - React 프론트엔드
+
+```bash
+# React 개발 서버 시작
+python -m frontend.react.cli
+
+# 또는 직접 npm 실행
+cd frontend/react
+npm run dev
+```
+
+**접속 정보:**
+- 프론트엔드: http://localhost:3000
+- API URL: http://localhost:8000 (환경 변수로 설정 가능)
 
 ### 데이터 수집
 

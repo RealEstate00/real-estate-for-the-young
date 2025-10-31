@@ -89,7 +89,7 @@ def load_rtms_data(normalized_data_dir: str, db_url: Optional[str] = None) -> bo
         # DB 설정
         db_config = {
             'host': os.getenv('PG_HOST', 'localhost'),
-            'port': os.getenv('PG_PORT', '5432'),
+            'port': os.getenv('PG_PORT', '55432'),
             'database': os.getenv('PG_DB', 'rey'),
             'user': os.getenv('PG_USER', 'postgres'),
             'password': os.getenv('PG_PASSWORD', 'post1234'),
@@ -322,7 +322,7 @@ def main():
     os.environ.setdefault("PG_USER", "postgres")
     os.environ.setdefault("PG_PASSWORD", "post1234")
     os.environ.setdefault("PG_HOST", "localhost")
-    os.environ.setdefault("PG_PORT", "5432")
+    os.environ.setdefault("PG_PORT", "55432")
     os.environ.setdefault("PG_DB", "rey")
     os.environ.setdefault("DATABASE_URL", "")
 

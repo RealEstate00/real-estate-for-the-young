@@ -15,7 +15,7 @@ if ENV_PATH.exists():
 def get_engine():
     """PostgreSQL 엔진 생성"""
     host = os.getenv("PG_HOST", "localhost")
-    port = int(os.getenv("PG_PORT", "5432"))
+    port = int(os.getenv("PG_PORT", "55432"))
     user = os.getenv("PG_USER", "postgres")
     password = os.getenv("PG_PASSWORD", "post1234")
     db = os.getenv("PG_DB", "rey")

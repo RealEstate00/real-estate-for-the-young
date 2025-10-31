@@ -8,15 +8,21 @@ from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict
 import logging
-
-from backend.services.llm.langchain.chains.housing_chain import recommend_housing
-from backend.services.llm.langchain.chains.housing_agent import housing_assistant
 from typing import Literal
 
 # ModelType 정의
 ModelType = Literal["ollama", "openai", "groq"]
 
 logger = logging.getLogger(__name__)
+
+# 임시 Mock 함수들 (추후 실제 LLM 구현으로 교체 필요)
+def recommend_housing(query: str, memory=None):
+    """임시 Mock 함수 - 추후 backend.services.llm.langchain.chains.housing_chain.recommend_housing로 교체"""
+    return f"'{query}'에 대한 주택 추천이 준비 중입니다. LLM 체인이 구현되면 실제 추천을 제공합니다."
+
+def housing_assistant(query: str, memory=None, use_hybrid=False):
+    """임시 Mock 함수 - 추후 backend.services.llm.langchain.chains.housing_agent.housing_assistant로 교체"""
+    return f"'{query}'에 대한 답변을 준비 중입니다. Housing Agent가 구현되면 실제 답변을 제공합니다."
 
 router = APIRouter(prefix="/api/llm", tags=["LLM"])
 

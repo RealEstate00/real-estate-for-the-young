@@ -26,7 +26,7 @@ class JSONLDBLoader:
         else:
             # .env 파일에서 DB 연결 정보 가져오기
             db_host = os.getenv('PG_HOST', 'localhost')
-            db_port = os.getenv('PG_PORT', '5432')
+            db_port = os.getenv('PG_PORT', '55432')
             db_name = os.getenv('PG_DB', 'rey')
             db_user = os.getenv('PG_USER', 'postgres')
             db_password = os.getenv('PG_PASSWORD', 'post1234')
