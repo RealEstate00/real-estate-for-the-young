@@ -44,15 +44,23 @@ services:
       - PG_DB=${PG_DB:-rey}
       - PG_USER=${PG_USER:-postgres}
       - PG_PASSWORD=${PG_PASSWORD:-post1234}
+      # 임베딩 모델 선택 (E5_SMALL, E5_BASE, E5_LARGE, KAKAO)
+      - RAG_EMBEDDING_MODEL=${RAG_EMBEDDING_MODEL:-E5_LARGE}
+      # Ollama 접근: 도커 컨테이너에서 호스트의 Ollama에 접근
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
     ports:
       - "8000:8000"
     volumes:
       - ./backend/data:/app/data
       - ./backend/logs:/app/logs
+      # HuggingFace 모델 캐시 마운트 (로컬에 영구 저장)
+      - ~/.cache/huggingface:/root/.cache/huggingface
       # 프로덕션에서는 코드 마운트하지 않음 (이미지에 포함됨)
     depends_on:
       postgres:
         condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway" # Colima에서 host.docker.internal 사용을 위한 설정
     networks:
       - housing_network
     restart: unless-stopped

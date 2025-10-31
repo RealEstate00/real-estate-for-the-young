@@ -1,10 +1,12 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-개발 모드 실행 스크립트
-- API와 Postgres: 도커에서 실행 (docker-compose.dev.yml)
-- Frontend: 로컬에서 개발 서버 실행 (코드 수정 즉시 반영)
-Usage: dev [--model e5_small|e5_base|e5_large|kakao]
+개발/프로덕션 모드 실행 스크립트
+- 개발 모드: API/Postgres는 도커, Frontend는 로컬 (코드 수정 즉시 반영)
+- 프로덕션 모드: 모든 서비스를 도커에서 실행 (Docker Hub 이미지 사용)
+Usage: 
+  dev [--model e5_small|e5_base|e5_large|kakao]          # 개발 모드
+  dev --prod [--model e5_small|e5_base|e5_large|kakao]  # 프로덕션 모드
 """
 
 import os
@@ -14,20 +16,27 @@ import time
 import argparse
 from pathlib import Path
 
-def get_compose_file():
-    """docker-compose.dev.yml 경로 반환"""
+def get_compose_file(prod: bool = False):
+    """docker-compose 파일 경로 반환"""
     project_root = Path(__file__).parent.parent.parent
-    return project_root / "docker-compose.dev.yml"
+    if prod:
+        return project_root / "docker-compose.prod.yml"
+    else:
+        return project_root / "docker-compose.dev.yml"
 
-def start_docker_services(model_name: str = None):
-    """도커에서 API와 Postgres 시작"""
-    compose_file = get_compose_file()
+def start_docker_services(model_name: str = None, prod: bool = False):
+    """도커에서 서비스 시작"""
+    compose_file = get_compose_file(prod=prod)
+    compose_name = "docker-compose.prod.yml" if prod else "docker-compose.dev.yml"
     
     if not compose_file.exists():
-        print(f"❌ docker-compose.dev.yml 파일을 찾을 수 없습니다: {compose_file}")
+        print(f"❌ {compose_name} 파일을 찾을 수 없습니다: {compose_file}")
         return False
     
-    print("🐳 Starting Docker services (API + Postgres)...")
+    if prod:
+        print("🐳 Starting Docker services (프로덕션 모드: API + Postgres + Frontend)...")
+    else:
+        print("🐳 Starting Docker services (개발 모드: API + Postgres)...")
     
     # 모델 환경 변수 설정 (docker-compose에서 사용할 수 있도록)
     env = os.environ.copy()
@@ -36,12 +45,21 @@ def start_docker_services(model_name: str = None):
         print(f"📌 Embedding Model: {model_name.upper()}")
     
     try:
-        # docker-compose로 API와 Postgres 시작
-        result = subprocess.run(
-            ["docker-compose", "-f", str(compose_file), "up", "-d"],
-            env=env,
-            check=False
-        )
+        # docker-compose로 서비스 시작
+        if prod:
+            # 프로덕션: 모든 서비스 시작
+            result = subprocess.run(
+                ["docker-compose", "-f", str(compose_file), "up", "-d"],
+                env=env,
+                check=False
+            )
+        else:
+            # 개발: API와 Postgres만 시작
+            result = subprocess.run(
+                ["docker-compose", "-f", str(compose_file), "up", "-d"],
+                env=env,
+                check=False
+            )
         
         if result.returncode == 0:
             print("✅ Docker services started")
@@ -80,9 +98,9 @@ def run_react():
         os.chdir(project_root)
 
 def main():
-    """개발 모드 실행"""
+    """개발/프로덕션 모드 실행"""
     parser = argparse.ArgumentParser(
-        description="개발 모드 실행 (API/Postgres: 도커, Frontend: 로컬)",
+        description="개발/프로덕션 모드 실행",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 사용 가능한 임베딩 모델:
@@ -92,8 +110,8 @@ def main():
   kakao      - KakaoBank DeBERTa (768차원, 한국어 특화)
 
 예시:
-  dev --model e5_small
-  dev --model e5_large
+  dev --model e5_large              # 개발 모드
+  dev --prod --model e5_large       # 프로덕션 모드
         """
     )
     parser.add_argument(
@@ -102,6 +120,11 @@ def main():
         default=None,
         choices=["e5_small", "e5_base", "e5_large", "kakao", "E5_SMALL", "E5_BASE", "E5_LARGE", "KAKAO"],
         help="사용할 임베딩 모델 (기본값: e5_small)"
+    )
+    parser.add_argument(
+        "--prod",
+        action="store_true",
+        help="프로덕션 모드 실행 (모든 서비스 Docker에서 실행)"
     )
     
     args = parser.parse_args()
@@ -121,32 +144,57 @@ def main():
         elif "LARGE" in model_upper:
             model_name = "E5_LARGE"
     
-    print("🚀 Starting Development Mode...")
-    print("🐳 API + Postgres: Docker (docker-compose.dev.yml)")
-    print("💻 Frontend: Local (npm run dev)")
-    print("📍 API: http://localhost:8000")
-    print("📍 Frontend: http://localhost:3000")
-    if model_name:
-        print(f"📌 Embedding Model: {model_name}")
-    print("🛑 Press Ctrl+C to stop Frontend (Docker는 계속 실행)")
-    print("-" * 50)
-    
-    try:
-        # 1. 도커에서 API와 Postgres 시작
-        if not start_docker_services(model_name):
-            print("❌ Docker services 시작 실패. 종료합니다.")
-            return
-        
-        print("✅ Docker services (API + Postgres) running")
-        print("⏳ Starting Frontend (local)...")
+    if args.prod:
+        # 프로덕션 모드
+        print("🚀 Starting Production Mode...")
+        print("🐳 모든 서비스: Docker (docker-compose.prod.yml)")
+        print("📍 API: http://localhost:8000")
+        print("📍 Frontend: http://localhost:3000")
+        if model_name:
+            print(f"📌 Embedding Model: {model_name}")
+        print("🛑 중지하려면: docker-compose -f docker-compose.prod.yml down")
         print("-" * 50)
         
-        # 2. 로컬에서 Frontend 개발 서버 실행
-        run_react()
+        try:
+            # 프로덕션: 모든 서비스를 Docker에서 실행
+            if not start_docker_services(model_name, prod=True):
+                print("❌ Docker services 시작 실패. 종료합니다.")
+                return
+            
+            print("✅ 모든 서비스가 Docker에서 실행 중입니다.")
+            print("💡 로그 확인: docker-compose -f docker-compose.prod.yml logs -f")
+            print("💡 중지: docker-compose -f docker-compose.prod.yml down")
+            
+        except KeyboardInterrupt:
+            print("\n🛑 중지되었습니다")
+    else:
+        # 개발 모드
+        print("🚀 Starting Development Mode...")
+        print("🐳 API + Postgres: Docker (docker-compose.dev.yml)")
+        print("💻 Frontend: Local (npm run dev)")
+        print("📍 API: http://localhost:8000")
+        print("📍 Frontend: http://localhost:3000")
+        if model_name:
+            print(f"📌 Embedding Model: {model_name}")
+        print("🛑 Press Ctrl+C to stop Frontend (Docker는 계속 실행)")
+        print("-" * 50)
         
-    except KeyboardInterrupt:
-        print("\n🛑 Frontend stopped (Docker services are still running)")
-        print("💡 Docker를 중지하려면: docker-compose -f docker-compose.dev.yml down")
+        try:
+            # 1. 도커에서 API와 Postgres 시작
+            if not start_docker_services(model_name, prod=False):
+                print("❌ Docker services 시작 실패. 종료합니다.")
+                return
+            
+            print("✅ Docker services (API + Postgres) running")
+            print("⏳ Starting Frontend (local)...")
+            print("-" * 50)
+            
+            # 2. 로컬에서 Frontend 개발 서버 실행
+            run_react()
+            
+        except KeyboardInterrupt:
+            print("\n🛑 Frontend stopped (Docker services are still running)")
+            print("💡 Docker를 중지하려면: docker-compose -f docker-compose.dev.yml down")
 
 if __name__ == "__main__":
     main()
