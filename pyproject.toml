@@ -20,7 +20,7 @@ dependencies = [
     # Database (PostgreSQL-first)
     "psycopg[binary]==3.2.3",
     "psycopg2-binary==2.9.11",
-    "sqlalchemy==2.0.23",
+    "sqlalchemy>=2.0.36",
     "alembic>=1.13.0",
     "pgvector>=0.2.5",
     
@@ -87,6 +87,7 @@ dependencies = [
     "groq>=0.9.0",
     "transformers>=4.50.0",
     "tokenizers>=0.20.0",
+    "langgraph>=0.2.0",
     
     # NLP & Text Processing
     "nltk>=3.8.1",
@@ -126,6 +127,7 @@ data-collection-infra = "backend.services.data_collection.cli.infra.__main__:mai
 data-collection-rtms = "backend.services.data_collection.cli.rtms.__main__:main"
 data-db = "backend.services.db.cli.db_cli:main"
 data-load = "backend.services.loading.cli.load_cli:main"
+sql-executor = "backend.services.db.cli.sql_executor:main"
 
 # RAG 시스템 CLI
 rag = "backend.services.rag.cli.rag_cli:main"
