@@ -1,0 +1,37 @@
+# 프론트엔드 Dockerfile
+# Stage 1: 빌드
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+# 의존성 파일 복사 및 설치
+COPY frontend/react/package*.json ./
+RUN npm ci
+
+# 소스 코드 복사 및 빌드
+COPY frontend/react/ ./
+RUN npm run build
+
+# Stage 2: 프로덕션 서빙
+FROM nginx:alpine
+
+# 빌드된 파일을 Nginx로 복사
+COPY --from=builder /app/dist /usr/share/nginx/html
+
+# Nginx 설정 파일 (기본 설정 사용)
+RUN echo 'server { \
+    listen 3000; \
+    server_name _; \
+    root /usr/share/nginx/html; \
+    index index.html; \
+    location / { \
+        try_files $uri $uri/ /index.html; \
+    } \
+}' > /etc/nginx/conf.d/default.conf
+
+# 포트 노출
+EXPOSE 3000
+
+# Nginx 시작
+CMD ["nginx", "-g", "daemon off;"]
+

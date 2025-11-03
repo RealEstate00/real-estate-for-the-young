@@ -6,6 +6,7 @@ Ollama를 통한 답변 생성
 """
 
 import logging
+import os
 import requests
 from typing import Optional, Dict, Any, List
 from abc import ABC, abstractmethod
@@ -53,19 +54,23 @@ class OllamaGenerator(LLMGenerator):
 
     def __init__(
         self,
-        base_url: str = "http://localhost:11434",
-        default_model: str = "gemma2:2b"
+        base_url: Optional[str] = None,
+        default_model: str = "gemma3:4b"
     ):
         """
         Args:
-            base_url: Ollama API URL
+            base_url: Ollama API URL (없으면 환경 변수 또는 기본값 사용)
             default_model: 기본 모델명
         """
+        # 환경 변수 또는 기본값 사용
+        if base_url is None:
+            base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+        
         self.base_url = base_url.rstrip('/')
         self.default_model = default_model
         self.api_url = f"{self.base_url}/api/generate"
 
-        logger.info(f"OllamaGenerator initialized with model: {default_model}")
+        logger.info(f"OllamaGenerator initialized with base_url: {self.base_url}, model: {default_model}")
 
     def _create_prompt(self, query: str, context: str) -> str:
         """프롬프트 생성"""

@@ -1,5 +1,25 @@
-const API_URL =
-  (import.meta as any).env?.VITE_API_URL || "http://localhost:8000";
+// API URL 자동 감지: 현재 호스트 기반으로 설정
+const getApiUrl = (): string => {
+  // 환경 변수에서 명시적으로 설정된 경우 사용
+  const envApiUrl = (import.meta as any).env?.VITE_API_URL;
+  if (envApiUrl) {
+    return envApiUrl;
+  }
+
+  // 현재 호스트 기반으로 API URL 자동 생성
+  const hostname = window.location.hostname;
+  const protocol = window.location.protocol;
+
+  // localhost인 경우 기본 포트 사용
+  if (hostname === "localhost" || hostname === "127.0.0.1") {
+    return "http://localhost:8000";
+  }
+
+  // 네트워크 주소(IP 주소)인 경우 같은 호스트, 포트 8000 사용
+  return `${protocol}//${hostname}:8000`;
+};
+
+const API_URL = getApiUrl();
 
 export interface ChatMessage {
   role: string;
