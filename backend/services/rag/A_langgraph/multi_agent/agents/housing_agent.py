@@ -47,13 +47,10 @@ class HousingAgent:
         self.rtms_agent = rtms_agent
         
         # PostgreSQL 연결
-        self.db = SQLDatabase.from_uri(
-            db_uri,
-            include_tables=[
-                "housing.notices",
-                "housing.units"
-            ]
-        )
+        # 주의: search_path가 housing, infra, rtms, vector_db로 설정되어 있어
+        # 스키마 이름 없이 테이블 이름만 사용 가능
+        # include_tables에 스키마 이름을 포함하면 테이블을 찾지 못함
+        self.db = SQLDatabase.from_uri(db_uri)
 
         # 스키마 정보 로드 (선택사항)
         self.schema_info = ""
