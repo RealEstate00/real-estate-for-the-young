@@ -35,6 +35,7 @@ export interface SourceInfo {
 export interface ChatResponse {
   message: string;
   sources: SourceInfo[];
+  title?: string; // 대화 제목 (mT5 요약)
 }
 
 export interface ChatRequest {

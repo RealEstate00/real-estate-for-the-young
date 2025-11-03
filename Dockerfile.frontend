@@ -1,6 +1,12 @@
-# 프론트엔드 Dockerfile
+# 프론트엔드 Dockerfile - 멀티플랫폼 지원
 # Stage 1: 빌드
-FROM node:20-alpine AS builder
+FROM --platform=$BUILDPLATFORM node:20-alpine AS builder
+
+# 빌드 인수 설정 (멀티플랫폼 지원)
+ARG TARGETPLATFORM
+ARG BUILDPLATFORM
+ARG TARGETOS
+ARG TARGETARCH
 
 WORKDIR /app
 
@@ -12,8 +18,13 @@ RUN npm ci
 COPY frontend/react/ ./
 RUN npm run build
 
-# Stage 2: 프로덕션 서빙
-FROM nginx:alpine
+# Stage 2: 프로덕션 서빙 (멀티플랫폼 타겟)
+FROM --platform=$TARGETPLATFORM nginx:alpine
+
+ARG TARGETPLATFORM
+ARG BUILDPLATFORM
+ARG TARGETOS
+ARG TARGETARCH
 
 # 빌드된 파일을 Nginx로 복사
 COPY --from=builder /app/dist /usr/share/nginx/html
