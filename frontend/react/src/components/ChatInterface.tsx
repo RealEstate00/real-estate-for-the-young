@@ -10,6 +10,10 @@ import {
   ChevronLeft,
   ChevronRight,
   GripVertical,
+  Edit,
+  Trash2,
+  CheckSquare,
+  Check,
 } from "lucide-react";
 import { chat, clearMemory, ChatMessage, SourceInfo } from "../services/llmApi";
 
@@ -97,6 +101,10 @@ export default function ChatInterface() {
     return saved === "true";
   });
   const [isResizing, setIsResizing] = useState(false);
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [selectedConversationIds, setSelectedConversationIds] = useState<
+    Set<string>
+  >(new Set());
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const sidebarRef = useRef<HTMLDivElement>(null);
@@ -148,29 +156,44 @@ export default function ChatInterface() {
 
   // 대화 기록 로드
   useEffect(() => {
-    const savedConversations = localStorage.getItem(CONVERSATIONS_STORAGE_KEY);
-    const savedCurrentId = localStorage.getItem(CURRENT_CONVERSATION_ID_KEY);
+    try {
+      const savedConversations = localStorage.getItem(
+        CONVERSATIONS_STORAGE_KEY
+      );
+      const savedCurrentId = localStorage.getItem(CURRENT_CONVERSATION_ID_KEY);
 
-    if (savedConversations) {
-      const parsed = JSON.parse(savedConversations).map((conv: any) => ({
-        ...conv,
-        createdAt: new Date(conv.createdAt),
-        updatedAt: new Date(conv.updatedAt),
-        messages: conv.messages.map((msg: any) => ({
-          ...msg,
-          timestamp: new Date(msg.timestamp),
-        })),
-      }));
-      setConversations(parsed);
+      if (savedConversations) {
+        try {
+          const parsed = JSON.parse(savedConversations).map((conv: any) => ({
+            ...conv,
+            createdAt: conv.createdAt ? new Date(conv.createdAt) : new Date(),
+            updatedAt: conv.updatedAt ? new Date(conv.updatedAt) : new Date(),
+            messages: (conv.messages || []).map((msg: any) => ({
+              ...msg,
+              timestamp: msg.timestamp ? new Date(msg.timestamp) : new Date(),
+            })),
+          }));
+          setConversations(parsed);
 
-      if (savedCurrentId) {
-        const conv = parsed.find((c: Conversation) => c.id === savedCurrentId);
-        if (conv) {
-          setMessages(conv.messages);
-          setCurrentConversationId(savedCurrentId);
-          savedConversationIdRef.current = savedCurrentId;
+          if (savedCurrentId) {
+            const conv = parsed.find(
+              (c: Conversation) => c.id === savedCurrentId
+            );
+            if (conv) {
+              setMessages(conv.messages);
+              setCurrentConversationId(savedCurrentId);
+              savedConversationIdRef.current = savedCurrentId;
+            }
+          }
+        } catch (parseError) {
+          console.error("대화 기록 파싱 오류:", parseError);
+          // 잘못된 데이터는 삭제
+          localStorage.removeItem(CONVERSATIONS_STORAGE_KEY);
+          localStorage.removeItem(CURRENT_CONVERSATION_ID_KEY);
         }
       }
+    } catch (error) {
+      console.error("대화 기록 로드 오류:", error);
     }
 
     isInitialLoadRef.current = false;
@@ -209,26 +232,57 @@ export default function ChatInterface() {
           return prevConversations;
         }
 
-        // 제목 생성: 백엔드에서 제공한 title 사용 (mT5 요약) 또는 fallback
+        // 제목 생성: 백엔드에서 제공한 title 사용 (mT5 요약) 또는 AI 답변 기반 fallback
         const generateTitle = (msgs: Message[]): string => {
-          // 백엔드에서 제공한 제목 우선 사용
+          // 1순위: 백엔드에서 제공한 제목 사용 (AI 답변을 mT5로 요약한 것)
           if (conversationTitle) {
             return conversationTitle;
           }
 
-          // Fallback: 첫 번째 사용자 메시지 사용 (25자로 제한)
-          const firstUserMessage = msgs.find((m) => m.role === "user");
-          if (firstUserMessage) {
-            const userContent = firstUserMessage.content.slice(0, 25);
-            // 자연스러운 끊김 지점 찾기
-            if (userContent.length >= 25) {
-              const lastSpace = userContent.lastIndexOf(" ");
+          // 2순위: 첫 번째 AI 답변 메시지 사용 (사용자 질문이 아닌 답변 기반)
+          const firstAssistantMessage = msgs.find(
+            (m) => m.role === "assistant"
+          );
+          if (firstAssistantMessage) {
+            // HTML 태그와 마크다운 제거
+            let assistantContent = firstAssistantMessage.content
+              .replace(/<[^>]*>/g, "") // HTML 태그 제거
+              .replace(/\*\*/g, "") // 볼드 제거
+              .replace(/##\s*/g, "") // 헤더 제거
+              .replace(/#\s*/g, "") // 헤더 제거
+              .replace(/^\d+\.\s*/gm, "") // 번호 리스트 제거
+              .replace(/\n+/g, " ") // 줄바꿈을 공백으로
+              .replace(/\s+/g, " ") // 여러 공백을 하나로
+              .trim();
+
+            // 괄호 안 내용 제거 (예: "(송파구 30세 여성)")
+            assistantContent = assistantContent
+              .replace(/\([^)]*\)/g, "")
+              .trim();
+
+            // 인사말 제거 (시작 부분과 중간 부분 모두)
+            assistantContent = assistantContent
+              .replace(/^안녕하세요[.,]?\s*/i, "")
+              .replace(/\s*안녕하세요[.,]?\s*/gi, " ")
+              .trim();
+
+            // 25자 내외로 제한
+            if (assistantContent.length > 25) {
+              assistantContent = assistantContent.slice(0, 25);
+              const lastSpace = assistantContent.lastIndexOf(" ");
               if (lastSpace > 10) {
-                return userContent.substring(0, lastSpace).trim();
+                assistantContent = assistantContent
+                  .substring(0, lastSpace)
+                  .trim();
               }
             }
-            return userContent;
+
+            if (assistantContent) {
+              return assistantContent;
+            }
           }
+
+          // 3순위: 기본 제목
           return "새 대화";
         };
 
@@ -352,11 +406,14 @@ export default function ChatInterface() {
           setConversationTitle(response.title);
         } else if (prev.length === 1) {
           // 첫 응답인데 제목이 없는 경우 경고
-          console.warn("⚠️ 첫 번째 응답이지만 백엔드에서 제목을 받지 못했습니다.", {
-            hasTitle: !!response.title,
-            responseKeys: Object.keys(response),
-            messageLength: prev.length
-          });
+          console.warn(
+            "⚠️ 첫 번째 응답이지만 백엔드에서 제목을 받지 못했습니다.",
+            {
+              hasTitle: !!response.title,
+              responseKeys: Object.keys(response),
+              messageLength: prev.length,
+            }
+          );
         }
 
         return updated;
@@ -467,6 +524,65 @@ export default function ChatInterface() {
     }
   };
 
+  // 편집 모드 관련 핸들러
+  const handleToggleEditMode = (e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    setIsEditMode((prev) => {
+      const newValue = !prev;
+      console.log("편집 모드 토글:", newValue);
+      return newValue;
+    });
+    setSelectedConversationIds(new Set());
+  };
+
+  const handleToggleConversationSelect = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSelectedConversationIds((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(id)) {
+        newSet.delete(id);
+      } else {
+        newSet.add(id);
+      }
+      return newSet;
+    });
+  };
+
+  const handleSelectAll = () => {
+    if (selectedConversationIds.size === conversations.length) {
+      setSelectedConversationIds(new Set());
+    } else {
+      setSelectedConversationIds(new Set(conversations.map((c) => c.id)));
+    }
+  };
+
+  const handleDeleteSelected = () => {
+    if (selectedConversationIds.size === 0) return;
+
+    const count = selectedConversationIds.size;
+    if (window.confirm(`선택한 ${count}개의 대화를 삭제하시겠습니까?`)) {
+      const updated = conversations.filter(
+        (c) => !selectedConversationIds.has(c.id)
+      );
+      setConversations(updated);
+      localStorage.setItem(CONVERSATIONS_STORAGE_KEY, JSON.stringify(updated));
+
+      // 현재 선택된 대화가 삭제되면 새 대화로 전환
+      if (
+        currentConversationId &&
+        selectedConversationIds.has(currentConversationId)
+      ) {
+        handleNewConversation();
+      }
+
+      setSelectedConversationIds(new Set());
+      setIsEditMode(false);
+    }
+  };
+
   const handleKeyPress = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -504,12 +620,67 @@ export default function ChatInterface() {
             </div>
           </div>
 
-          <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+          <div className="p-4 border-b border-gray-200 flex items-center justify-between relative z-20">
             <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
               <History className="w-5 h-5" />
               대화 기록
             </h2>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 relative z-20">
+              {!isEditMode && (
+                <button
+                  onClick={(e) => handleToggleEditMode(e)}
+                  className="text-gray-500 hover:text-gray-700 transition-colors relative z-10"
+                  title="편집"
+                  type="button"
+                >
+                  <Edit className="w-5 h-5" />
+                </button>
+              )}
+              {isEditMode && (
+                <>
+                  <button
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      handleSelectAll();
+                    }}
+                    className="text-gray-500 hover:text-blue-600 transition-colors relative z-10"
+                    title={
+                      selectedConversationIds.size === conversations.length
+                        ? "전체 해제"
+                        : "전체 선택"
+                    }
+                    type="button"
+                  >
+                    <CheckSquare className="w-5 h-5" />
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      handleDeleteSelected();
+                    }}
+                    disabled={selectedConversationIds.size === 0}
+                    className={`transition-colors relative z-10 ${
+                      selectedConversationIds.size === 0
+                        ? "text-gray-300 cursor-not-allowed"
+                        : "text-red-500 hover:text-red-700"
+                    }`}
+                    title="선택 항목 삭제"
+                    type="button"
+                  >
+                    <Trash2 className="w-5 h-5" />
+                  </button>
+                  <button
+                    onClick={(e) => handleToggleEditMode(e)}
+                    className="text-green-500 hover:text-green-700 transition-colors relative z-10"
+                    title="완료"
+                    type="button"
+                  >
+                    <Check className="w-5 h-5" />
+                  </button>
+                </>
+              )}
               <button
                 onClick={handleToggleSidebar}
                 className="hidden md:flex text-gray-500 hover:text-gray-700 transition-colors"
@@ -533,45 +704,76 @@ export default function ChatInterface() {
               <Send className="w-4 h-4" />새 대화 시작
             </button>
             <div className="space-y-2">
-              {conversations.map((conversation) => (
-                <div
-                  key={conversation.id}
-                  onClick={() => handleSelectConversation(conversation)}
-                  className={`p-3 rounded-lg cursor-pointer transition-colors relative group ${
-                    currentConversationId === conversation.id
-                      ? "bg-blue-50 border border-blue-200"
-                      : "bg-gray-50 hover:bg-gray-100 border border-transparent"
-                  }`}
-                >
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-800 truncate">
-                        {conversation.title}
-                      </p>
-                      <p className="text-xs text-gray-500 mt-1">
-                        {conversation.messages.length}개 메시지
-                      </p>
-                      <p className="text-xs text-gray-400 mt-1">
-                        {conversation.updatedAt.toLocaleDateString("ko-KR", {
-                          month: "short",
-                          day: "numeric",
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                      </p>
+              {conversations.map((conversation) => {
+                const isSelected = selectedConversationIds.has(conversation.id);
+                return (
+                  <div
+                    key={conversation.id}
+                    onClick={() =>
+                      !isEditMode && handleSelectConversation(conversation)
+                    }
+                    className={`p-3 rounded-lg transition-colors relative group ${
+                      isEditMode
+                        ? isSelected
+                          ? "bg-blue-100 border border-blue-300"
+                          : "bg-gray-50 hover:bg-gray-100 border border-transparent"
+                        : currentConversationId === conversation.id
+                        ? "bg-blue-50 border border-blue-200"
+                        : "bg-gray-50 hover:bg-gray-100 border border-transparent"
+                    } ${!isEditMode ? "cursor-pointer" : ""}`}
+                  >
+                    <div className="flex items-start gap-3">
+                      {isEditMode && (
+                        <div
+                          onClick={(e) =>
+                            handleToggleConversationSelect(conversation.id, e)
+                          }
+                          className="flex-shrink-0 mt-0.5 cursor-pointer"
+                        >
+                          <div
+                            className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
+                              isSelected
+                                ? "bg-blue-600 border-blue-600"
+                                : "bg-white border-gray-300"
+                            }`}
+                          >
+                            {isSelected && (
+                              <Check className="w-3 h-3 text-white" />
+                            )}
+                          </div>
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-800 truncate">
+                          {conversation.title}
+                        </p>
+                        <p className="text-xs text-gray-500 mt-1">
+                          {conversation.messages.length}개 메시지
+                        </p>
+                        <p className="text-xs text-gray-400 mt-1">
+                          {conversation.updatedAt.toLocaleDateString("ko-KR", {
+                            month: "short",
+                            day: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </p>
+                      </div>
+                      {!isEditMode && (
+                        <button
+                          onClick={(e) =>
+                            handleDeleteConversation(conversation.id, e)
+                          }
+                          className="ml-2 opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 transition-opacity flex-shrink-0"
+                          title="삭제"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      )}
                     </div>
-                    <button
-                      onClick={(e) =>
-                        handleDeleteConversation(conversation.id, e)
-                      }
-                      className="ml-2 opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 transition-opacity"
-                      title="삭제"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
                   </div>
-                </div>
-              ))}
+                );
+              })}
               {conversations.length === 0 && (
                 <div className="text-center py-8 text-gray-500 text-sm">
                   대화 기록이 없습니다
@@ -603,10 +805,10 @@ export default function ChatInterface() {
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col min-w-0">
-      {/* Header */}
-      <header className="bg-white border-b border-gray-200 shadow-sm">
+        {/* Header */}
+        <header className="bg-white border-b border-gray-200 shadow-sm">
           <div className="px-4 py-4 flex justify-between items-center">
-          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3">
               <button
                 onClick={() => setSidebarOpen(true)}
                 className="md:hidden text-gray-600 hover:text-gray-800"
@@ -623,161 +825,161 @@ export default function ChatInterface() {
                 </button>
               )}
               <Home className="w-6 h-6 text-blue-600 hidden md:block" />
-            <h1 className="text-xl font-bold text-gray-800">
-              청년을 위한 서울 주택 안내
-            </h1>
-          </div>
-          <button
-            onClick={handleClearChat}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
-            title="대화 초기화"
-          >
-            <RotateCcw className="w-4 h-4" />
-              <span className="hidden md:inline">대화 초기화</span>
-          </button>
-        </div>
-      </header>
-
-      {/* Messages Container */}
-      <div className="flex-1 overflow-y-auto">
-        <div className="max-w-4xl mx-auto px-4 py-6">
-          {messages.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-center py-12">
-              <div className="bg-white rounded-2xl p-8 shadow-sm border border-gray-200 max-w-md">
-                <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <Home className="w-8 h-8 text-blue-600" />
-                </div>
-                <h2 className="text-xl font-semibold text-gray-800 mb-2">
-                  무엇을 도와드릴까요?
-                </h2>
-                <p className="text-sm text-gray-600 mb-4">
-                  서울시 청년 주택에 대해 궁금한 점을 물어보세요
-                </p>
-                <div className="bg-gray-50 rounded-lg p-3 text-left">
-                  <p className="text-xs font-semibold text-gray-700 mb-2">
-                    예시 질문:
-                  </p>
-                  <ul className="text-xs text-gray-600 space-y-1">
-                    <li>• 강남역 근처 청년주택 알려줘</li>
-                    <li>• 대학가 근처의 집을 찾고 있어</li>
-                      <li>• 청년 월세 지원금을 알고 싶어</li>
-                  </ul>
-                  </div>
-              </div>
+              <h1 className="text-xl font-bold text-gray-800">
+                청년을 위한 서울 주택 안내
+              </h1>
             </div>
-          ) : (
-            <div className="space-y-4">
-              {messages.map((message, index) => (
-                <div
-                  key={index}
-                  className={`flex ${
-                    message.role === "user" ? "justify-end" : "justify-start"
-                  }`}
-                >
+            <button
+              onClick={handleClearChat}
+              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+              title="대화 초기화"
+            >
+              <RotateCcw className="w-4 h-4" />
+              <span className="hidden md:inline">대화 초기화</span>
+            </button>
+          </div>
+        </header>
+
+        {/* Messages Container */}
+        <div className="flex-1 overflow-y-auto">
+          <div className="max-w-4xl mx-auto px-4 py-6">
+            {messages.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full text-center py-12">
+                <div className="bg-white rounded-2xl p-8 shadow-sm border border-gray-200 max-w-md">
+                  <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <Home className="w-8 h-8 text-blue-600" />
+                  </div>
+                  <h2 className="text-xl font-semibold text-gray-800 mb-2">
+                    무엇을 도와드릴까요?
+                  </h2>
+                  <p className="text-sm text-gray-600 mb-4">
+                    서울시 청년 주택에 대해 궁금한 점을 물어보세요
+                  </p>
+                  <div className="bg-gray-50 rounded-lg p-3 text-left">
+                    <p className="text-xs font-semibold text-gray-700 mb-2">
+                      예시 질문:
+                    </p>
+                    <ul className="text-xs text-gray-600 space-y-1">
+                      <li>• 강남역 근처 청년주택 알려줘</li>
+                      <li>• 대학가 근처의 집을 찾고 있어</li>
+                      <li>• 청년 월세 지원금을 알고 싶어</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {messages.map((message, index) => (
                   <div
-                    className={`max-w-[75%] rounded-2xl px-4 py-3 shadow-sm ${
-                      message.role === "user"
-                        ? "bg-blue-600 text-white"
-                        : "bg-white text-gray-800 border border-gray-200"
+                    key={index}
+                    className={`flex ${
+                      message.role === "user" ? "justify-end" : "justify-start"
                     }`}
                   >
                     <div
-                      className="text-sm leading-relaxed text-left"
-                      dangerouslySetInnerHTML={{
-                        __html: formatMessage(message.content),
-                      }}
-                    />
+                      className={`max-w-[75%] rounded-2xl px-4 py-3 shadow-sm ${
+                        message.role === "user"
+                          ? "bg-blue-600 text-white"
+                          : "bg-white text-gray-800 border border-gray-200"
+                      }`}
+                    >
+                      <div
+                        className="text-sm leading-relaxed text-left"
+                        dangerouslySetInnerHTML={{
+                          __html: formatMessage(message.content),
+                        }}
+                      />
 
-                    {message.sources && message.sources.length > 0 && (
-                      <div className="mt-3 pt-3 border-t border-gray-200">
-                        <div className="flex items-center gap-1 mb-2 text-left">
-                          <FileText className="w-3 h-3 text-gray-500" />
-                          <p className="text-xs font-semibold text-gray-600">
-                            참고 문서:
-                          </p>
-                        </div>
-                        {/* 상위 1개 source만 표시 */}
-                        {message.sources[0] && (
-                          <div className="text-xs text-gray-600 bg-gray-50 rounded px-2 py-1 text-left">
+                      {message.sources && message.sources.length > 0 && (
+                        <div className="mt-3 pt-3 border-t border-gray-200">
+                          <div className="flex items-center gap-1 mb-2 text-left">
+                            <FileText className="w-3 h-3 text-gray-500" />
+                            <p className="text-xs font-semibold text-gray-600">
+                              참고 문서:
+                            </p>
+                          </div>
+                          {/* 상위 1개 source만 표시 */}
+                          {message.sources[0] && (
+                            <div className="text-xs text-gray-600 bg-gray-50 rounded px-2 py-1 text-left">
                               • {message.sources[0].title}
                               {message.sources[0].district && (
                                 <span> ({message.sources[0].district})</span>
                               )}
-                            {message.sources[0].address && (
-                              <div className="text-xs text-gray-500 mt-1 text-left">
-                                {message.sources[0].address}
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    )}
+                              {message.sources[0].address && (
+                                <div className="text-xs text-gray-500 mt-1 text-left">
+                                  {message.sources[0].address}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
 
-                    <p
-                      className={`text-xs mt-2 text-left ${
-                        message.role === "user"
-                          ? "text-blue-200"
-                          : "text-gray-500"
-                      }`}
-                    >
-                      {message.timestamp.toLocaleTimeString("ko-KR", {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                    </p>
-                  </div>
-                </div>
-              ))}
-
-              {isLoading && (
-                <div className="flex justify-start">
-                  <div className="bg-white border border-gray-200 rounded-2xl px-4 py-3 shadow-sm">
-                    <div className="flex items-center gap-2">
-                      <div className="flex gap-1">
-                        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
-                        <div
-                          className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
-                          style={{ animationDelay: "0.1s" }}
-                        ></div>
-                        <div
-                          className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
-                          style={{ animationDelay: "0.2s" }}
-                        ></div>
-                      </div>
-                      <span className="text-xs text-gray-500 text-left">
-                        답변 생성 중...
-                      </span>
+                      <p
+                        className={`text-xs mt-2 text-left ${
+                          message.role === "user"
+                            ? "text-blue-200"
+                            : "text-gray-500"
+                        }`}
+                      >
+                        {message.timestamp.toLocaleTimeString("ko-KR", {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </p>
                     </div>
                   </div>
-                </div>
-              )}
+                ))}
 
-              <div ref={messagesEndRef} />
-            </div>
-          )}
-        </div>
-      </div>
+                {isLoading && (
+                  <div className="flex justify-start">
+                    <div className="bg-white border border-gray-200 rounded-2xl px-4 py-3 shadow-sm">
+                      <div className="flex items-center gap-2">
+                        <div className="flex gap-1">
+                          <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
+                          <div
+                            className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
+                            style={{ animationDelay: "0.1s" }}
+                          ></div>
+                          <div
+                            className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
+                            style={{ animationDelay: "0.2s" }}
+                          ></div>
+                        </div>
+                        <span className="text-xs text-gray-500 text-left">
+                          답변 생성 중...
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
-      {/* Input Area */}
-      <div className="bg-white border-t border-gray-200 shadow-lg">
-        <div className="max-w-4xl mx-auto px-4 py-4">
-          <div className="flex gap-3">
-            <div className="flex-1 relative">
-              <textarea
-                ref={textareaRef}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyPress={handleKeyPress}
-                placeholder="메시지를 입력하세요..."
-                className="w-full px-4 py-3 pr-12 border border-gray-300 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                rows={2}
-                disabled={isLoading}
-                maxLength={1000}
-              />
-              <div className="absolute bottom-2 right-2 text-xs text-gray-400">
-                {input.length}/1000
+                <div ref={messagesEndRef} />
               </div>
-            </div>
+            )}
+          </div>
+        </div>
+
+        {/* Input Area */}
+        <div className="bg-white border-t border-gray-200 shadow-lg">
+          <div className="max-w-4xl mx-auto px-4 py-4">
+            <div className="flex gap-3">
+              <div className="flex-1 relative">
+                <textarea
+                  ref={textareaRef}
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyPress={handleKeyPress}
+                  placeholder="메시지를 입력하세요..."
+                  className="w-full px-4 py-3 pr-12 bg-white border border-gray-300 text-gray-900 placeholder-gray-400 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                  rows={2}
+                  disabled={isLoading}
+                  maxLength={1000}
+                />
+                <div className="absolute bottom-2 right-2 text-xs text-gray-400">
+                  {input.length}/1000
+                </div>
+              </div>
               {isLoading ? (
                 <button
                   onClick={handleStop}
@@ -787,19 +989,19 @@ export default function ChatInterface() {
                   중지
                 </button>
               ) : (
-            <button
-              onClick={handleSend}
+                <button
+                  onClick={handleSend}
                   disabled={!input.trim()}
-              className="px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex items-center gap-2 font-medium shadow-sm"
-            >
-              <Send className="w-4 h-4" />
-              전송
-            </button>
+                  className="px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex items-center gap-2 font-medium shadow-sm"
+                >
+                  <Send className="w-4 h-4" />
+                  전송
+                </button>
               )}
-          </div>
-          <p className="text-xs text-gray-500 mt-2 text-center">
-            Enter로 전송 • Shift+Enter로 줄바꿈
-          </p>
+            </div>
+            <p className="text-xs text-gray-500 mt-2 text-center">
+              Enter로 전송 • Shift+Enter로 줄바꿈
+            </p>
           </div>
         </div>
       </div>
