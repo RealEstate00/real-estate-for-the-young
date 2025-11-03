@@ -224,6 +224,7 @@ backend/data/vector_db/chroma/*
 !backend/data/*/example.*
 
 backend/services/rag/results/
+docs/*
 
 # vector_db
 backend/data/PDF/chroma_db/

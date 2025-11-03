@@ -35,23 +35,23 @@ const formatMessage = (text: string | undefined | null) => {
 
   return (
     text
-      // 헤더 처리 (## 헤더)
+      // 헤더 처리 (## 헤더) - 섹션 간 간격을 크게, 제목-내용 간격은 작게
       .replace(
         /^##\s+(.+)$/gm,
-        '<h2 class="text-2xl font-bold text-gray-900 mb-3 mt-6 leading-tight">$1</h2>'
+        '<h2 class="text-2xl font-bold text-gray-900 mb-0 mt-4 leading-tight">$1</h2>'
       )
       .replace(
         /^###\s+(.+)$/gm,
-        '<h3 class="text-xl font-bold text-gray-900 mb-2 mt-4 leading-tight">$1</h3>'
+        '<h3 class="text-xl font-bold text-gray-900 mb-0 mt-4 leading-tight">$1</h3>'
       )
-      // 번호 리스트 형식 처리
+      // 번호 리스트 형식 처리 (섹션 간 간격을 크게 설정, 제목-내용 간격은 매우 작게)
       .replace(
         /\*\*(\d+)\.\s+(.+?)\*\*/g,
-        '<h3 class="text-xl font-bold text-gray-900 mb-3 mt-4 leading-tight">$1. $2</h3>'
+        '<h3 class="text-xl font-bold text-gray-900 mb-0 mt-5 leading-tight">$1. $2</h3>'
       )
       .replace(
         /\*\*(\d+)\.\s+\[(.+?)\]\*\*/g,
-        '<h3 class="text-xl font-bold text-gray-900 mb-3 mt-4 leading-tight">$1. [$2]</h3>'
+        '<h3 class="text-xl font-bold text-gray-900 mb-0 mt-5 leading-tight">$1. [$2]</h3>'
       )
       // 테이블 형식 처리
       .replace(
