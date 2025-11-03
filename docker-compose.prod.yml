@@ -32,6 +32,7 @@ services:
   # API 서버 - Docker Hub에서 이미지 pull
   api:
     # Docker Hub 이미지: jina1003/seoul-housing-api:latest
+    # 멀티플랫폼 이미지: 호스트 플랫폼에 맞는 이미지 자동 선택 (amd64/arm64)
     image: jina1003/seoul-housing-api:latest
     container_name: seoul_housing_api
     environment:
@@ -73,6 +74,7 @@ services:
   # 프론트엔드 - Docker Hub에서 이미지 pull (빌드된 정적 파일을 Nginx로 서빙)
   frontend:
     # Docker Hub 이미지: jina1003/seoul-housing-frontend:latest
+    # 멀티플랫폼 이미지: 호스트 플랫폼에 맞는 이미지 자동 선택 (amd64/arm64)
     image: jina1003/seoul-housing-frontend:latest
     container_name: seoul_housing_frontend
     environment:
