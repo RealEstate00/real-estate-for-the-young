@@ -583,8 +583,10 @@ export default function ChatInterface() {
                           {/* 상위 1개 source만 표시 */}
                           {message.sources[0] && (
                             <div className="text-xs text-gray-600 bg-gray-50 rounded px-2 py-1 text-left">
-                              • {message.sources[0].title} (
-                              {message.sources[0].district})
+                              • {message.sources[0].title}
+                              {message.sources[0].district && (
+                                <span> ({message.sources[0].district})</span>
+                              )}
                               {message.sources[0].address && (
                                 <div className="text-xs text-gray-500 mt-1 text-left">
                                   {message.sources[0].address}
