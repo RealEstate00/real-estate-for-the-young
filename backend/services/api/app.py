@@ -6,6 +6,8 @@ from typing import List
 # Import routers
 from backend.services.api.routers.llm import router as llm_router
 from backend.services.api.routers.streaming import router as streaming_router
+from backend.services.api.routers.auth import router as auth_router
+from backend.services.api.routers.conversation import router as conversation_router
 
 app = FastAPI(
     title="Real Estate for the Young API",
@@ -40,6 +42,8 @@ app.add_middleware(
 )
 
 # Register routers
+app.include_router(auth_router)  # 인증 라우터 추가
+app.include_router(conversation_router)  # 대화 관리 라우터 추가
 app.include_router(llm_router)  # LLM 라우터 추가
 app.include_router(streaming_router)  # 스트리밍 라우터 추가
 

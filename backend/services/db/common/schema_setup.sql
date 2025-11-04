@@ -17,6 +17,9 @@ CREATE SCHEMA IF NOT EXISTS rtms;
 -- RAG Vector DB 스키마 (임베딩 및 벡터 검색)
 CREATE SCHEMA IF NOT EXISTS vector_db;
 
+-- 인증 및 대화 관리 스키마
+CREATE SCHEMA IF NOT EXISTS auth;
+
 -- ===========================================
 -- 2. 스키마별 테이블 구조
 -- ===========================================
@@ -40,6 +43,11 @@ CREATE SCHEMA IF NOT EXISTS vector_db;
 -- - price_trends (가격 동향)
 -- - market_analysis (시장 분석)
 
+-- AUTH 스키마 (인증 및 대화 관리)
+-- - users (사용자)
+-- - conversations (대화)
+-- - messages (메시지)
+
 -- ===========================================
 -- 3. 스키마 간 FK 참조 예시
 -- ===========================================
@@ -54,4 +62,4 @@ CREATE SCHEMA IF NOT EXISTS vector_db;
 -- ===========================================
 
 -- 기본 검색 경로 설정 (스키마 명시 없이 사용 가능)
-ALTER DATABASE rey SET search_path TO housing, infra, rtms, vector_db;
+ALTER DATABASE rey SET search_path TO auth, housing, infra, rtms, vector_db;

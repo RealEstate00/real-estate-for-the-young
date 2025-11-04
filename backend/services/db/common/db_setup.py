@@ -10,6 +10,7 @@ def setup_schema():
     base_dir = Path(__file__).parent
     schema_files = [
         base_dir / "schema_setup.sql",
+        base_dir.parent / "schema" / "auth_schema.sql",  # auth 스키마
         base_dir.parent / "schema" / "housing_schema.sql",
         base_dir.parent / "schema" / "infra_schema.sql",
         base_dir.parent / "schema" / "rtms_schema.sql",

@@ -14,8 +14,20 @@ import {
   Trash2,
   CheckSquare,
   Check,
+  LogIn,
+  UserPlus,
+  User,
+  LogOut,
 } from "lucide-react";
 import { chat, clearMemory, ChatMessage, SourceInfo } from "../services/llmApi";
+import { chatWithSave, isAuthenticated } from "../services/conversationApi";
+import {
+  login,
+  register,
+  logout,
+  getUser,
+  User as UserType,
+} from "../services/authApi";
 
 interface Message extends ChatMessage {
   timestamp: Date;
@@ -105,6 +117,21 @@ export default function ChatInterface() {
   const [selectedConversationIds, setSelectedConversationIds] = useState<
     Set<string>
   >(new Set());
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [authMode, setAuthMode] = useState<"login" | "register">("login");
+  const [currentUser, setCurrentUser] = useState<UserType | null>(() =>
+    getUser()
+  );
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [authLoading, setAuthLoading] = useState(false);
+
+  // 로그인/회원가입 폼 상태
+  const [loginEmail, setLoginEmail] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
+  const [registerEmail, setRegisterEmail] = useState("");
+  const [registerUsername, setRegisterUsername] = useState("");
+  const [registerPassword, setRegisterPassword] = useState("");
+  const [registerFullName, setRegisterFullName] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const sidebarRef = useRef<HTMLDivElement>(null);
@@ -266,6 +293,12 @@ export default function ChatInterface() {
               .replace(/\s*안녕하세요[.,]?\s*/gi, " ")
               .trim();
 
+            // 따옴표 제거 (작은따옴표, 큰따옴표 모두)
+            assistantContent = assistantContent
+              .replace(/^["'"]+|["'"]+$/g, "") // 앞뒤 따옴표 제거
+              .replace(/["'"]/g, "") // 중간 따옴표도 제거
+              .trim();
+
             // 25자 내외로 제한
             if (assistantContent.length > 25) {
               assistantContent = assistantContent.slice(0, 25);
@@ -377,42 +410,91 @@ export default function ChatInterface() {
     setAbortController(controller);
 
     try {
-      // 대화 기록을 백엔드로 전송 (메시지 배열 형태)
-      const chatMessages: ChatMessage[] = updatedMessages.map((m) => ({
-        role: m.role,
-        content: m.content,
-      }));
+      // 로그인 여부 확인
+      const userIsAuthenticated = isAuthenticated();
 
-      const response = await chat(chatMessages, "ollama", controller.signal);
+      let aiMessage: Message;
+      let responseTitle: string | undefined;
 
-      const aiMessage: Message = {
-        role: "assistant",
-        content: response.message,
-        sources:
-          response.sources && response.sources.length > 0
-            ? [response.sources[0]]
-            : [],
-        timestamp: new Date(),
-      };
+      if (userIsAuthenticated) {
+        // 로그인 사용자: DB 저장 API 사용
+        console.log("🔐 로그인 사용자 - DB 저장 모드");
+
+        // conversation_id가 숫자면 사용, 아니면 null
+        const dbConversationId =
+          currentConversationId && !isNaN(Number(currentConversationId))
+            ? Number(currentConversationId)
+            : null;
+
+        const dbResponse = await chatWithSave({
+          conversation_id: dbConversationId,
+          message: input,
+          model_type: "ollama",
+        });
+
+        // DB에서 받은 conversation_id를 currentConversationId로 설정
+        if (
+          !currentConversationId ||
+          currentConversationId !== String(dbResponse.conversation_id)
+        ) {
+          setCurrentConversationId(String(dbResponse.conversation_id));
+        }
+
+        aiMessage = {
+          role: "assistant",
+          content: dbResponse.assistant_message.content,
+          sources:
+            dbResponse.sources && dbResponse.sources.length > 0
+              ? [dbResponse.sources[0]]
+              : [],
+          timestamp: new Date(),
+        };
+
+        // DB 응답에 제목이 있으면 사용 (첫 메시지인 경우)
+        if (messages.length === 1) {
+          // 제목 추출 로직 (assistant_message content 기반)
+          responseTitle = dbResponse.assistant_message.content
+            .replace(/<[^>]*>/g, "")
+            .replace(/\*\*/g, "")
+            .replace(/##\s*/g, "")
+            .split("\n")[0]
+            .slice(0, 30)
+            .trim();
+        }
+      } else {
+        // 비로그인 사용자: localStorage만 사용
+        console.log("👤 비로그인 사용자 - localStorage 모드");
+
+        const chatMessages: ChatMessage[] = updatedMessages.map((m) => ({
+          role: m.role,
+          content: m.content,
+        }));
+
+        const response = await chat(chatMessages, "ollama", controller.signal);
+
+        aiMessage = {
+          role: "assistant",
+          content: response.message,
+          sources:
+            response.sources && response.sources.length > 0
+              ? [response.sources[0]]
+              : [],
+          timestamp: new Date(),
+        };
+
+        responseTitle = response.title;
+      }
 
       setMessages((prev) => {
         const updated = [...prev, aiMessage];
 
         // 백엔드에서 제공한 제목이 있고, 첫 번째 응답인 경우에만 제목 저장
-        if (response.title && prev.length === 1) {
-          // 첫 질문(prev) + 답변(aiMessage) = 2개
-          // 제목을 상태에 저장 (대화 기록 저장 시 사용)
-          console.log("✅ 백엔드에서 받은 제목:", response.title);
-          setConversationTitle(response.title);
+        if (responseTitle && prev.length === 1) {
+          console.log("✅ 백엔드에서 받은 제목:", responseTitle);
+          setConversationTitle(responseTitle);
         } else if (prev.length === 1) {
-          // 첫 응답인데 제목이 없는 경우 경고
           console.warn(
-            "⚠️ 첫 번째 응답이지만 백엔드에서 제목을 받지 못했습니다.",
-            {
-              hasTitle: !!response.title,
-              responseKeys: Object.keys(response),
-              messageLength: prev.length,
-            }
+            "⚠️ 첫 번째 응답이지만 백엔드에서 제목을 받지 못했습니다."
           );
         }
 
@@ -597,6 +679,108 @@ export default function ChatInterface() {
   const handleResizeStart = (e: React.MouseEvent) => {
     e.preventDefault();
     setIsResizing(true);
+  };
+
+  // 인증 관련 핸들러
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError(null);
+    setAuthLoading(true);
+
+    try {
+      const response = await login({
+        email: loginEmail,
+        password: loginPassword,
+      });
+      setCurrentUser(response.user);
+      setShowAuthModal(false);
+      setLoginEmail("");
+      setLoginPassword("");
+      // 페이지 새로고침하여 대화 목록 다시 로드
+      window.location.reload();
+    } catch (error: any) {
+      setAuthError(error.message || "로그인에 실패했습니다.");
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError(null);
+    setAuthLoading(true);
+
+    // 클라이언트 측 유효성 검사
+    // 사용자명 검증: 영문, 숫자, 하이픈, 밑줄만 허용
+    const usernamePattern = /^[a-zA-Z0-9_-]+$/;
+    if (!usernamePattern.test(registerUsername)) {
+      setAuthError("사용자명은 영문, 숫자, 하이픈(-), 밑줄(_)만 사용 가능합니다.");
+      setAuthLoading(false);
+      return;
+    }
+
+    if (registerUsername.length < 3 || registerUsername.length > 100) {
+      setAuthError("사용자명은 3자 이상 100자 이하여야 합니다.");
+      setAuthLoading(false);
+      return;
+    }
+
+    if (registerPassword.length < 8) {
+      setAuthError("비밀번호는 최소 8자 이상이어야 합니다.");
+      setAuthLoading(false);
+      return;
+    }
+
+    try {
+      const response = await register({
+        email: registerEmail,
+        username: registerUsername,
+        password: registerPassword,
+        full_name: registerFullName || undefined,
+      });
+      setCurrentUser(response.user);
+      setShowAuthModal(false);
+      setRegisterEmail("");
+      setRegisterUsername("");
+      setRegisterPassword("");
+      setRegisterFullName("");
+      // 페이지 새로고침하여 대화 목록 다시 로드
+      window.location.reload();
+    } catch (error: any) {
+      // 백엔드 에러 메시지 처리
+      let errorMessage = "회원가입에 실패했습니다.";
+      if (error.message) {
+        if (error.message.includes("Email already registered")) {
+          errorMessage = "이미 등록된 이메일입니다.";
+        } else if (error.message.includes("Username already taken")) {
+          errorMessage = "이미 사용 중인 사용자명입니다.";
+        } else if (error.message.includes("Username must contain")) {
+          errorMessage = "사용자명은 영문, 숫자, 하이픈(-), 밑줄(_)만 사용 가능합니다.";
+        } else {
+          errorMessage = error.message;
+        }
+      }
+      setAuthError(errorMessage);
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleLogout = () => {
+    if (window.confirm("로그아웃하시겠습니까?")) {
+      logout();
+      setCurrentUser(null);
+      // 새 대화로 초기화
+      handleNewConversation();
+      // 페이지 새로고침
+      window.location.reload();
+    }
+  };
+
+  const handleOpenAuthModal = (mode: "login" | "register") => {
+    setAuthMode(mode);
+    setShowAuthModal(true);
+    setAuthError(null);
   };
 
   return (
@@ -829,14 +1013,51 @@ export default function ChatInterface() {
                 청년을 위한 서울 주택 안내
               </h1>
             </div>
-            <button
-              onClick={handleClearChat}
-              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
-              title="대화 초기화"
-            >
-              <RotateCcw className="w-4 h-4" />
-              <span className="hidden md:inline">대화 초기화</span>
-            </button>
+            <div className="flex items-center gap-2">
+              {currentUser ? (
+                <div className="flex items-center gap-2">
+                  <div className="hidden md:flex items-center gap-2 px-3 py-2 text-sm text-gray-700">
+                    <User className="w-4 h-4" />
+                    <span className="font-medium">{currentUser.username}</span>
+                  </div>
+                  <button
+                    onClick={handleLogout}
+                    className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+                    title="로그아웃"
+                  >
+                    <LogOut className="w-4 h-4" />
+                    <span className="hidden md:inline">로그아웃</span>
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => handleOpenAuthModal("login")}
+                    className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
+                    title="로그인"
+                  >
+                    <LogIn className="w-4 h-4" />
+                    <span className="hidden md:inline">로그인</span>
+                  </button>
+                  <button
+                    onClick={() => handleOpenAuthModal("register")}
+                    className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
+                    title="회원가입"
+                  >
+                    <UserPlus className="w-4 h-4" />
+                    <span className="hidden md:inline">회원가입</span>
+                  </button>
+                </div>
+              )}
+              <button
+                onClick={handleClearChat}
+                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+                title="대화 초기화"
+              >
+                <RotateCcw className="w-4 h-4" />
+                <span className="hidden md:inline">대화 초기화</span>
+              </button>
+            </div>
           </div>
         </header>
 
@@ -1005,6 +1226,185 @@ export default function ChatInterface() {
           </div>
         </div>
       </div>
+
+      {/* 인증 모달 */}
+      {showAuthModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-2xl font-bold text-gray-800">
+                  {authMode === "login" ? "로그인" : "회원가입"}
+                </h2>
+                <button
+                  onClick={() => {
+                    setShowAuthModal(false);
+                    setAuthError(null);
+                  }}
+                  className="text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+
+              {authError && (
+                <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+                  <p className="text-sm text-red-600">{authError}</p>
+                </div>
+              )}
+
+              {authMode === "login" ? (
+                <form onSubmit={handleLogin} className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      이메일
+                    </label>
+                    <input
+                      type="email"
+                      value={loginEmail}
+                      onChange={(e) => setLoginEmail(e.target.value)}
+                      required
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="example@email.com"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      비밀번호
+                    </label>
+                    <input
+                      type="password"
+                      value={loginPassword}
+                      onChange={(e) => setLoginPassword(e.target.value)}
+                      required
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="비밀번호를 입력하세요"
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={authLoading}
+                    className="w-full px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors font-medium"
+                  >
+                    {authLoading ? "로그인 중..." : "로그인"}
+                  </button>
+                  <div className="text-center text-sm text-gray-600">
+                    계정이 없으신가요?{" "}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAuthMode("register");
+                        setAuthError(null);
+                      }}
+                      className="text-blue-600 hover:text-blue-700 font-medium"
+                    >
+                      회원가입
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <form onSubmit={handleRegister} className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      이메일
+                    </label>
+                    <input
+                      type="email"
+                      value={registerEmail}
+                      onChange={(e) => setRegisterEmail(e.target.value)}
+                      required
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="example@email.com"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      사용자명
+                    </label>
+                    <input
+                      type="text"
+                      value={registerUsername}
+                      onChange={(e) => {
+                        // 영문, 숫자, 하이픈, 밑줄만 허용
+                        const value = e.target.value;
+                        const filtered = value.replace(/[^a-zA-Z0-9_-]/g, '');
+                        if (filtered !== value) {
+                          setAuthError("사용자명은 영문, 숫자, 하이픈(-), 밑줄(_)만 사용 가능합니다.");
+                        } else {
+                          // 에러가 해결되면 에러 메시지 제거
+                          if (authError && authError.includes("사용자명은")) {
+                            setAuthError(null);
+                          }
+                        }
+                        setRegisterUsername(filtered);
+                      }}
+                      onInvalid={(e) => {
+                        e.preventDefault();
+                        setAuthError("사용자명은 영문, 숫자, 하이픈(-), 밑줄(_)만 사용 가능합니다.");
+                      }}
+                      required
+                      minLength={3}
+                      maxLength={100}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="사용자명 (영문, 숫자, -, _만 가능)"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      3-100자, 영문, 숫자, -, _만 사용 가능
+                    </p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      비밀번호
+                    </label>
+                    <input
+                      type="password"
+                      value={registerPassword}
+                      onChange={(e) => setRegisterPassword(e.target.value)}
+                      required
+                      minLength={8}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="최소 8자 이상"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      이름 (선택)
+                    </label>
+                    <input
+                      type="text"
+                      value={registerFullName}
+                      onChange={(e) => setRegisterFullName(e.target.value)}
+                      maxLength={200}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="이름 (선택사항)"
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={authLoading}
+                    className="w-full px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors font-medium"
+                  >
+                    {authLoading ? "회원가입 중..." : "회원가입"}
+                  </button>
+                  <div className="text-center text-sm text-gray-600">
+                    이미 계정이 있으신가요?{" "}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAuthMode("login");
+                        setAuthError(null);
+                      }}
+                      className="text-blue-600 hover:text-blue-700 font-medium"
+                    >
+                      로그인
+                    </button>
+                  </div>
+                </form>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
