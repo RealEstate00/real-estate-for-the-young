@@ -47,6 +47,8 @@ services:
       - PG_PASSWORD=${PG_PASSWORD:-post1234}
       # Ollama 접근: 도커 컨테이너에서 호스트의 Ollama에 접근
       - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      # 기본 임베딩 모델 (E5_SMALL, E5_BASE, E5_LARGE, KAKAO)
+      - RAG_EMBEDDING_MODEL=E5_LARGE
     ports:
       - "8000:8000"
     volumes:
