@@ -125,12 +125,21 @@ export default function ChatInterface() {
   const [authError, setAuthError] = useState<string | null>(null);
   const [authLoading, setAuthLoading] = useState(false);
 
+  // 필드별 에러 상태
+  const [fieldErrors, setFieldErrors] = useState<{
+    email?: string;
+    username?: string;
+    password?: string;
+    fullName?: string;
+  }>({});
+
   // 로그인/회원가입 폼 상태
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
   const [registerEmail, setRegisterEmail] = useState("");
   const [registerUsername, setRegisterUsername] = useState("");
   const [registerPassword, setRegisterPassword] = useState("");
+  const [registerPasswordConfirm, setRegisterPasswordConfirm] = useState("");
   const [registerFullName, setRegisterFullName] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -451,15 +460,11 @@ export default function ChatInterface() {
         };
 
         // DB 응답에 제목이 있으면 사용 (첫 메시지인 경우)
-        if (messages.length === 1) {
-          // 제목 추출 로직 (assistant_message content 기반)
-          responseTitle = dbResponse.assistant_message.content
-            .replace(/<[^>]*>/g, "")
-            .replace(/\*\*/g, "")
-            .replace(/##\s*/g, "")
-            .split("\n")[0]
-            .slice(0, 30)
-            .trim();
+        if (dbResponse.title) {
+          responseTitle = dbResponse.title;
+          console.log("✅ 백엔드에서 받은 제목:", responseTitle);
+        } else if (updatedMessages.length === 1) {
+          console.warn("⚠️ 첫 번째 응답이지만 백엔드에서 제목을 받지 못했습니다.");
         }
       } else {
         // 비로그인 사용자: localStorage만 사용
@@ -684,6 +689,7 @@ export default function ChatInterface() {
   // 인증 관련 핸들러
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    e.stopPropagation(); // 이벤트 전파 방지
     setAuthError(null);
     setAuthLoading(true);
 
@@ -707,35 +713,70 @@ export default function ChatInterface() {
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
+    e.stopPropagation(); // 이벤트 전파 방지
+
+    console.log("회원가입 버튼 클릭됨");
     setAuthError(null);
+    setFieldErrors({});
     setAuthLoading(true);
 
-    // 클라이언트 측 유효성 검사
-    // 사용자명 검증: 영문, 숫자, 하이픈, 밑줄만 허용
-    const usernamePattern = /^[a-zA-Z0-9_-]+$/;
-    if (!usernamePattern.test(registerUsername)) {
-      setAuthError("사용자명은 영문, 숫자, 하이픈(-), 밑줄(_)만 사용 가능합니다.");
+    // 필드별 에러 수집
+    const errors: typeof fieldErrors = {};
+
+    // 이메일 검증
+    if (!registerEmail.trim()) {
+      errors.email = "이메일을 입력해주세요.";
+    } else {
+      const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailPattern.test(registerEmail)) {
+        errors.email = "올바른 이메일 주소를 입력해주세요.";
+      }
+    }
+
+    // 사용자명 검증
+    if (!registerUsername.trim()) {
+      errors.username = "사용자명을 입력해주세요.";
+    } else {
+      const usernamePattern = /^[a-zA-Z0-9_-]+$/;
+      if (!usernamePattern.test(registerUsername)) {
+        errors.username =
+          "사용자명은 영문, 숫자, 하이픈(-), 밑줄(_)만 사용 가능합니다.";
+      } else if (registerUsername.length < 3 || registerUsername.length > 100) {
+        errors.username = "사용자명은 3자 이상 100자 이하여야 합니다.";
+      }
+    }
+
+    // 비밀번호 검증
+    if (!registerPassword) {
+      errors.password = "비밀번호를 입력해주세요.";
+    } else if (registerPassword.length < 8) {
+      errors.password = "비밀번호는 최소 8자 이상이어야 합니다.";
+    }
+
+    // 비밀번호 확인 검증
+    if (!registerPasswordConfirm) {
+      errors.password = "비밀번호 확인을 입력해주세요.";
+    } else if (registerPassword !== registerPasswordConfirm) {
+      errors.password = "비밀번호가 일치하지 않습니다.";
+    }
+
+    // 에러가 있으면 표시하고 중단
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
+      setAuthError("입력 정보를 확인해주세요.");
       setAuthLoading(false);
+      console.log("유효성 검사 실패:", errors);
       return;
     }
 
-    if (registerUsername.length < 3 || registerUsername.length > 100) {
-      setAuthError("사용자명은 3자 이상 100자 이하여야 합니다.");
-      setAuthLoading(false);
-      return;
-    }
-
-    if (registerPassword.length < 8) {
-      setAuthError("비밀번호는 최소 8자 이상이어야 합니다.");
-      setAuthLoading(false);
-      return;
-    }
+    console.log("유효성 검사 통과, API 호출 시작");
 
     try {
       const response = await register({
         email: registerEmail,
         username: registerUsername,
         password: registerPassword,
+        password_confirm: registerPasswordConfirm,
         full_name: registerFullName || undefined,
       });
       setCurrentUser(response.user);
@@ -743,24 +784,37 @@ export default function ChatInterface() {
       setRegisterEmail("");
       setRegisterUsername("");
       setRegisterPassword("");
+      setRegisterPasswordConfirm("");
       setRegisterFullName("");
       // 페이지 새로고침하여 대화 목록 다시 로드
       window.location.reload();
     } catch (error: any) {
+      console.log("회원가입 에러:", error);
       // 백엔드 에러 메시지 처리
-      let errorMessage = "회원가입에 실패했습니다.";
+      const backendErrors: typeof fieldErrors = {};
+      let generalError = null;
+
       if (error.message) {
         if (error.message.includes("Email already registered")) {
-          errorMessage = "이미 등록된 이메일입니다.";
+          backendErrors.email = "이미 등록된 이메일입니다.";
         } else if (error.message.includes("Username already taken")) {
-          errorMessage = "이미 사용 중인 사용자명입니다.";
+          backendErrors.username = "이미 사용 중인 사용자명입니다.";
         } else if (error.message.includes("Username must contain")) {
-          errorMessage = "사용자명은 영문, 숫자, 하이픈(-), 밑줄(_)만 사용 가능합니다.";
+          backendErrors.username =
+            "사용자명은 영문, 숫자, 하이픈(-), 밑줄(_)만 사용 가능합니다.";
         } else {
-          errorMessage = error.message;
+          generalError = error.message || "회원가입에 실패했습니다.";
         }
+      } else {
+        generalError = "회원가입에 실패했습니다.";
       }
-      setAuthError(errorMessage);
+
+      if (Object.keys(backendErrors).length > 0) {
+        setFieldErrors(backendErrors);
+        setAuthError("입력 정보를 확인해주세요.");
+      } else {
+        setAuthError(generalError);
+      }
     } finally {
       setAuthLoading(false);
     }
@@ -781,6 +835,7 @@ export default function ChatInterface() {
     setAuthMode(mode);
     setShowAuthModal(true);
     setAuthError(null);
+    setFieldErrors({});
   };
 
   return (
@@ -1240,6 +1295,7 @@ export default function ChatInterface() {
                   onClick={() => {
                     setShowAuthModal(false);
                     setAuthError(null);
+                    setFieldErrors({});
                   }}
                   className="text-gray-400 hover:text-gray-600 transition-colors"
                 >
@@ -1254,7 +1310,7 @@ export default function ChatInterface() {
               )}
 
               {authMode === "login" ? (
-                <form onSubmit={handleLogin} className="space-y-4">
+                <form onSubmit={handleLogin} className="space-y-4" noValidate>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       이메일
@@ -1264,7 +1320,7 @@ export default function ChatInterface() {
                       value={loginEmail}
                       onChange={(e) => setLoginEmail(e.target.value)}
                       required
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
                       placeholder="example@email.com"
                     />
                   </div>
@@ -1277,7 +1333,7 @@ export default function ChatInterface() {
                       value={loginPassword}
                       onChange={(e) => setLoginPassword(e.target.value)}
                       required
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
                       placeholder="비밀번호를 입력하세요"
                     />
                   </div>
@@ -1295,6 +1351,7 @@ export default function ChatInterface() {
                       onClick={() => {
                         setAuthMode("register");
                         setAuthError(null);
+                        setFieldErrors({});
                       }}
                       className="text-blue-600 hover:text-blue-700 font-medium"
                     >
@@ -1303,23 +1360,45 @@ export default function ChatInterface() {
                   </div>
                 </form>
               ) : (
-                <form onSubmit={handleRegister} className="space-y-4">
+                <form
+                  onSubmit={handleRegister}
+                  className="space-y-4"
+                  noValidate
+                >
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      이메일
+                      이메일 <span className="text-red-500">*</span>
                     </label>
                     <input
                       type="email"
                       value={registerEmail}
-                      onChange={(e) => setRegisterEmail(e.target.value)}
+                      onChange={(e) => {
+                        setRegisterEmail(e.target.value);
+                        // 에러가 있으면 필드 에러 초기화
+                        if (fieldErrors.email) {
+                          setFieldErrors((prev) => ({
+                            ...prev,
+                            email: undefined,
+                          }));
+                        }
+                      }}
                       required
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 text-gray-900 ${
+                        fieldErrors.email
+                          ? "border-red-500 focus:ring-red-500 focus:border-red-500"
+                          : "border-gray-300 focus:ring-blue-500 focus:border-blue-500"
+                      }`}
                       placeholder="example@email.com"
                     />
+                    {fieldErrors.email && (
+                      <p className="text-xs text-red-600 mt-1">
+                        {fieldErrors.email}
+                      </p>
+                    )}
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      사용자명
+                      사용자명 <span className="text-red-500">*</span>
                     </label>
                     <input
                       type="text"
@@ -1327,43 +1406,93 @@ export default function ChatInterface() {
                       onChange={(e) => {
                         // 영문, 숫자, 하이픈, 밑줄만 허용
                         const value = e.target.value;
-                        const filtered = value.replace(/[^a-zA-Z0-9_-]/g, '');
-                        if (filtered !== value) {
-                          setAuthError("사용자명은 영문, 숫자, 하이픈(-), 밑줄(_)만 사용 가능합니다.");
-                        } else {
-                          // 에러가 해결되면 에러 메시지 제거
-                          if (authError && authError.includes("사용자명은")) {
-                            setAuthError(null);
-                          }
-                        }
+                        const filtered = value.replace(/[^a-zA-Z0-9_-]/g, "");
                         setRegisterUsername(filtered);
-                      }}
-                      onInvalid={(e) => {
-                        e.preventDefault();
-                        setAuthError("사용자명은 영문, 숫자, 하이픈(-), 밑줄(_)만 사용 가능합니다.");
+                        // 에러가 있으면 필드 에러 초기화
+                        if (fieldErrors.username) {
+                          setFieldErrors((prev) => ({
+                            ...prev,
+                            username: undefined,
+                          }));
+                        }
                       }}
                       required
                       minLength={3}
                       maxLength={100}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 text-gray-900 ${
+                        fieldErrors.username
+                          ? "border-red-500 focus:ring-red-500 focus:border-red-500"
+                          : "border-gray-300 focus:ring-blue-500 focus:border-blue-500"
+                      }`}
                       placeholder="사용자명 (영문, 숫자, -, _만 가능)"
                     />
-                    <p className="text-xs text-gray-500 mt-1">
-                      3-100자, 영문, 숫자, -, _만 사용 가능
-                    </p>
+                    {fieldErrors.username ? (
+                      <p className="text-xs text-red-600 mt-1">
+                        {fieldErrors.username}
+                      </p>
+                    ) : (
+                      <p className="text-xs text-gray-500 mt-1">
+                        3-100자, 영문, 숫자, -, _만 사용 가능
+                      </p>
+                    )}
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      비밀번호
+                      비밀번호 <span className="text-red-500">*</span>
                     </label>
                     <input
                       type="password"
                       value={registerPassword}
-                      onChange={(e) => setRegisterPassword(e.target.value)}
+                      onChange={(e) => {
+                        setRegisterPassword(e.target.value);
+                        // 에러가 있으면 필드 에러 초기화
+                        if (fieldErrors.password) {
+                          setFieldErrors((prev) => ({
+                            ...prev,
+                            password: undefined,
+                          }));
+                        }
+                      }}
                       required
                       minLength={8}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 text-gray-900 ${
+                        fieldErrors.password
+                          ? "border-red-500 focus:ring-red-500 focus:border-red-500"
+                          : "border-gray-300 focus:ring-blue-500 focus:border-blue-500"
+                      }`}
                       placeholder="최소 8자 이상"
+                    />
+                    {fieldErrors.password && (
+                      <p className="text-xs text-red-600 mt-1">
+                        {fieldErrors.password}
+                      </p>
+                    )}
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      비밀번호 확인 <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="password"
+                      value={registerPasswordConfirm}
+                      onChange={(e) => {
+                        setRegisterPasswordConfirm(e.target.value);
+                        // 에러가 있으면 필드 에러 초기화
+                        if (fieldErrors.password) {
+                          setFieldErrors((prev) => ({
+                            ...prev,
+                            password: undefined,
+                          }));
+                        }
+                      }}
+                      required
+                      minLength={8}
+                      className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 text-gray-900 ${
+                        fieldErrors.password
+                          ? "border-red-500 focus:ring-red-500 focus:border-red-500"
+                          : "border-gray-300 focus:ring-blue-500 focus:border-blue-500"
+                      }`}
+                      placeholder="비밀번호를 다시 입력하세요"
                     />
                   </div>
                   <div>
@@ -1375,16 +1504,23 @@ export default function ChatInterface() {
                       value={registerFullName}
                       onChange={(e) => setRegisterFullName(e.target.value)}
                       maxLength={200}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
                       placeholder="이름 (선택사항)"
                     />
                   </div>
                   <button
                     type="submit"
                     disabled={authLoading}
-                    className="w-full px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors font-medium"
+                    className="w-full px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors font-medium flex items-center justify-center gap-2"
                   >
-                    {authLoading ? "회원가입 중..." : "회원가입"}
+                    {authLoading ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                        회원가입 중...
+                      </>
+                    ) : (
+                      "회원가입"
+                    )}
                   </button>
                   <div className="text-center text-sm text-gray-600">
                     이미 계정이 있으신가요?{" "}
@@ -1393,6 +1529,7 @@ export default function ChatInterface() {
                       onClick={() => {
                         setAuthMode("login");
                         setAuthError(null);
+                        setFieldErrors({});
                       }}
                       className="text-blue-600 hover:text-blue-700 font-medium"
                     >

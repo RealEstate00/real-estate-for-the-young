@@ -454,13 +454,22 @@ async def chat_with_save(
             {"conversation_id": conversation_id, "content": llm_response.message}
         ).fetchone()
 
-        # 첫 메시지인 경우 대화 제목 업데이트 (LLM이 제목을 생성한 경우)
+        # 첫 번째 AI 답변인 경우 대화 제목 업데이트 (이전 메시지가 없고, LLM이 제목을 생성한 경우)
+        # len(msg_results) == 0: DB에 저장된 이전 메시지가 없음 = 첫 대화 시작
         if llm_response.title and len(msg_results) == 0:
             conn.execute(
                 text("UPDATE auth.conversations SET title = :title WHERE id = :conversation_id"),
                 {"conversation_id": conversation_id, "title": llm_response.title}
             )
+            logger.info(f"✅ 첫 번째 AI 답변 기반 제목 생성 및 DB 저장: '{llm_response.title}' ({len(llm_response.title)}자)")
 
+    # 첫 번째 AI 답변인 경우에만 제목 반환 (이전 메시지가 없고, LLM이 생성한 제목)
+    # len(msg_results) == 0: 첫 사용자 질문 + 첫 AI 답변 = 첫 대화 시작
+    response_title = None
+    if len(msg_results) == 0 and llm_response.title:
+        response_title = llm_response.title
+        logger.info(f"✅ 첫 번째 AI 답변 기반 제목 반환: '{response_title}' ({len(response_title)}자)")
+    
     return ChatMessageResponse(
         conversation_id=conversation_id,
         user_message=MessageResponse(
@@ -477,5 +486,6 @@ async def chat_with_save(
             content=assistant_msg[3],
             created_at=assistant_msg[4]
         ),
-        sources=llm_response.sources
+        sources=llm_response.sources,
+        title=response_title
     )

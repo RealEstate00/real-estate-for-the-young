@@ -109,7 +109,7 @@ COMMENT ON TABLE auth.conversations IS '사용자별 대화 목록 테이블';
 COMMENT ON TABLE auth.messages IS '대화의 개별 메시지 테이블';
 
 COMMENT ON COLUMN auth.users.email IS '사용자 이메일 (로그인 ID)';
-COMMENT ON COLUMN auth.users.password IS 'bcrypt로 해싱된 비밀번호';
+COMMENT ON COLUMN auth.users.password IS 'Django pbkdf2로 해싱된 비밀번호';
 COMMENT ON COLUMN auth.users.is_active IS '계정 활성화 여부';
 COMMENT ON COLUMN auth.users.is_verified IS '이메일 인증 여부';
 

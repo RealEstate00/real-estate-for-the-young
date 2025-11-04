@@ -11,6 +11,17 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def health_view(request):
+    """
+    Health check endpoint
+
+    GET /api/llm/health
+    """
+    return Response({'status': 'ok'}, status=status.HTTP_200_OK)
+
+
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def chat_view(request):

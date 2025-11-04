@@ -130,3 +130,4 @@ class ChatMessageResponse(BaseModel):
     user_message: MessageResponse
     assistant_message: MessageResponse
     sources: Optional[List[dict]] = None
+    title: Optional[str] = Field(default=None, description="대화 제목 (mT5 요약, 첫 메시지인 경우만)")

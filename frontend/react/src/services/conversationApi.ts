@@ -23,7 +23,7 @@ const API_URL = getApiUrl();
 
 // Helper function to get auth token
 const getAuthToken = (): string | null => {
-  return localStorage.getItem("access_token");
+  return localStorage.getItem("auth_token");
 };
 
 // Helper function to create auth headers
@@ -66,6 +66,7 @@ export interface ChatWithSaveResponse {
   user_message: Message;
   assistant_message: Message;
   sources: any[];
+  title?: string;  // Generated title for first message
 }
 
 // Get all conversations for current user
@@ -97,7 +98,9 @@ export const getConversation = async (id: number): Promise<Conversation> => {
 };
 
 // Create new conversation
-export const createConversation = async (title: string): Promise<Conversation> => {
+export const createConversation = async (
+  title: string
+): Promise<Conversation> => {
   const response = await fetch(`${API_URL}/api/conversations/`, {
     method: "POST",
     headers: getAuthHeaders(),

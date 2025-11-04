@@ -49,3 +49,4 @@ class ChatResponseSerializer(serializers.Serializer):
     user_message = MessageSerializer()
     assistant_message = MessageSerializer()
     sources = serializers.ListField(required=False, allow_null=True)
+    title = serializers.CharField(required=False, allow_null=True)

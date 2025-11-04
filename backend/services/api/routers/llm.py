@@ -601,17 +601,18 @@ async def chat(request: ChatRequest, rag_system: RAGSystem = Depends(get_rag_sys
         result = response.json()
         answer = result.get("response", "").strip()
         
-        # mT5-base를 사용하여 제목 요약 생성 (첫 번째 응답인 경우에만)
+        # mT5-base를 사용하여 제목 요약 생성 (첫 번째 AI 답변인 경우에만)
         title = None
-        # 첫 번째 질문-답변 쌍인 경우 (사용자 메시지 1개, assistant 메시지 0개 = 총 1개)
-        if len(user_messages) == 1:  # 첫 번째 질문
-            logger.info(f"첫 번째 질문 감지, 제목 생성 시작. 응답 길이: {len(answer)}자")
+        # 첫 번째 사용자 질문인 경우 (len(user_messages) == 1)
+        # 이 시점에서 AI 답변(answer)이 이미 생성되어 있으므로, 이를 기반으로 제목 생성
+        if len(user_messages) == 1:  # 첫 번째 사용자 질문 = 첫 번째 AI 답변 생성 시점
+            logger.info(f"첫 번째 사용자 질문 감지, 첫 번째 AI 답변 기반 제목 생성 시작. 응답 길이: {len(answer)}자")
             try:
-                # LLM 응답을 mT5-base로 요약하여 25자 내외 제목 생성
+                # 첫 번째 AI 답변을 mT5-base로 요약하여 25자 내외 제목 생성
                 logger.info("mT5-base 요약 함수 호출 중...")
                 title = summarize_title(answer, max_length=25)
                 if title:
-                    logger.info(f"✅ mT5-base 요약 성공: '{title}' ({len(title)}자)")
+                    logger.info(f"✅ mT5-base 요약 성공 (첫 번째 AI 답변 기반): '{title}' ({len(title)}자)")
                 else:
                     logger.warning("⚠️ mT5-base 요약 결과가 비어있습니다.")
             except Exception as e:

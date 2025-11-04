@@ -159,16 +159,19 @@ def chat_view(request):
     )
 
     # 5. Update conversation title if first message
+    generated_title = None
     if not conversation_id and llm_response.title:
         conversation.title = llm_response.title
         conversation.save(update_fields=['title'])
+        generated_title = llm_response.title
 
     # 6. Return response
     response_data = {
         'conversation_id': conversation.id,
         'user_message': MessageSerializer(user_msg).data,
         'assistant_message': MessageSerializer(assistant_msg).data,
-        'sources': llm_response.sources
+        'sources': llm_response.sources,
+        'title': generated_title  # Include title in response for first message
     }
 
     return Response(response_data, status=status.HTTP_200_OK)

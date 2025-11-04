@@ -2,7 +2,8 @@
  * 인증 관련 API 서비스
  */
 
-const API_URL = (import.meta as any).env?.VITE_API_URL || "http://localhost:8000";
+const API_URL =
+  (import.meta as any).env?.VITE_API_URL || "http://localhost:8000";
 
 // ==================== Types ====================
 
@@ -10,6 +11,7 @@ export interface UserRegister {
   email: string;
   username: string;
   password: string;
+  password_confirm: string;
   full_name?: string;
 }
 
@@ -71,7 +73,7 @@ export const isAuthenticated = (): boolean => {
 export const register = async (
   userData: UserRegister
 ): Promise<TokenResponse> => {
-  const response = await fetch(`${API_URL}/api/auth/register`, {
+  const response = await fetch(`${API_URL}/api/auth/register/`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -92,10 +94,8 @@ export const register = async (
 /**
  * 로그인
  */
-export const login = async (
-  credentials: UserLogin
-): Promise<TokenResponse> => {
-  const response = await fetch(`${API_URL}/api/auth/login`, {
+export const login = async (credentials: UserLogin): Promise<TokenResponse> => {
+  const response = await fetch(`${API_URL}/api/auth/login/`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -129,7 +129,7 @@ export const getCurrentUser = async (): Promise<User> => {
     throw new Error("Not authenticated");
   }
 
-  const response = await fetch(`${API_URL}/api/auth/me`, {
+  const response = await fetch(`${API_URL}/api/auth/me/`, {
     headers: {
       Authorization: `Bearer ${token}`,
     },
