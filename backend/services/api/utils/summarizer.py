@@ -110,20 +110,22 @@ def summarize_title(text: str, max_length: int = 25) -> str:
         clean_text = re.sub(r'\s+', ' ', clean_text)  # 여러 공백을 하나로
         clean_text = clean_text.strip()
         
-        # 인사말 및 불필요한 표현 제거
+        # 인사말 및 불필요한 표현 제거 (시작 부분과 중간 부분 모두)
         remove_patterns = [
-            r'^안녕하세요[.,]?\s*',
-            r'^안녕하세요[.,]?\s*[가-힣\s]*님[.,]?\s*',
+            r'^안녕하세요[.,]?\s*',  # 시작 부분
+            r'^안녕하세요[.,]?\s*[가-힣\s]*님[.,]?\s*',  # 시작 부분 (님 포함)
+            r'\s*안녕하세요[.,]?\s*',  # 중간/끝 부분
             r'^질문[에대한]?\s*[답변안내]+[.:]\s*',
             r'^문서에\s*따르면[.,]?\s*',
             r'^제공된\s*문서[에의하면]*[.,]?\s*',
         ]
         
         for pattern in remove_patterns:
-            clean_text = re.sub(pattern, '', clean_text, flags=re.IGNORECASE)
+            clean_text = re.sub(pattern, ' ', clean_text, flags=re.IGNORECASE)
         
         # 괄호 안 내용 제거 
         clean_text = re.sub(r'\([^)]*\)', '', clean_text)
+        clean_text = re.sub(r'\s+', ' ', clean_text)  # 여러 공백을 하나로
         clean_text = clean_text.strip()
         
         if not clean_text:
@@ -144,18 +146,39 @@ def summarize_title(text: str, max_length: int = 25) -> str:
         device = next(model.parameters()).device
         logger.info(f"✅ 모델 준비 완료, 디바이스: {device}")
         
-        # mT5에 제목 형식 요약 지시 (명확한 프롬프트)
-        # "25자 내외 제목으로 사용 가능하도록, 완전한 제목으로 요약" 지시
-        prompt_text = f"""다음 텍스트를 25자 내외의 완전한 제목 형식으로 요약해주세요. 
-- 핵심 키워드만 추출하여 제목으로 사용 가능하게
-- 중간에 끊기지 않고 완전한 의미의 제목으로
-- 사용자 질문 내용은 제외하고 응답 내용만 요약:
-
-{clean_text}"""
+        # 핵심 키워드 추출 시도 (대출, 안내, 지원금 등)
+        keywords = []
+        keyword_patterns = [
+            r'(버팀목|전세자금|전세대출|전세 대출|대출)',
+            r'(안내|지원|지원금|사업|제도)',
+            r'(청년|월세|임차|보증금)',
+        ]
+        for pattern in keyword_patterns:
+            matches = re.findall(pattern, clean_text, re.IGNORECASE)
+            keywords.extend([m for m in matches if isinstance(m, str)])
         
-        # mT5는 text-to-text 모델이므로 "summarize:" 프리픽스 사용
-        input_text = f"summarize: {prompt_text}"
-        logger.debug(f"📤 프롬프트 길이: {len(input_text)}자")
+        # 중복 제거하고 순서 유지
+        seen = set()
+        unique_keywords = []
+        for kw in keywords:
+            if kw.lower() not in seen:
+                seen.add(kw.lower())
+                unique_keywords.append(kw)
+        
+        # mT5 프롬프트: 명확한 제목 형식 요약 지시
+        # 한국어로 더 구체적인 지시를 제공
+        if unique_keywords:
+            keyword_text = " ".join(unique_keywords[:2])  # 상위 2개만 (제목 형식으로)
+            # 핵심 키워드를 포함한 제목 형식으로 요약
+            prompt_instruction = f"다음 텍스트를 '{keyword_text}' 관련 제목으로 요약 (25자 이내, 핵심만):"
+        else:
+            # 키워드가 없으면 일반 제목 요약
+            prompt_instruction = "다음 텍스트를 25자 이내의 간결한 제목으로 요약 (핵심 키워드만):"
+        
+        # 텍스트의 처음 부분만 사용 (제목은 첫 부분에서 추출)
+        text_for_summary = clean_text[:150]  # 처음 150자만
+        input_text = f"{prompt_instruction} {text_for_summary}"
+        logger.debug(f"📤 프롬프트: {input_text[:150]}...")
         
         # 토큰화 (입력이 길 경우 잘라냄)
         max_input_length = 512
@@ -190,8 +213,21 @@ def summarize_title(text: str, max_length: int = 25) -> str:
         summary = summary.strip()
         logger.debug(f"📥 원본 요약 결과: '{summary}' ({len(summary)}자)")
         
+        # extra_id 토큰 제거 (<extra_id_0>, <extra_id_1> 등)
+        summary = re.sub(r'<extra_id_\d+>', '', summary)
+        summary = summary.strip()
+        
         # 불필요한 접두사 제거 ("요약:", "제목:", "답변:" 등)
-        summary = re.sub(r'^(요약|제목|답변|응답)[:：]\s*', '', summary, flags=re.IGNORECASE)
+        summary = re.sub(r'^(요약|제목|답변|응답|summarize)[:：]\s*', '', summary, flags=re.IGNORECASE)
+        summary = summary.strip()
+        
+        # 추가로 인사말이 포함된 경우 제거 (요약 결과에도)
+        summary = re.sub(r'\s*안녕하세요[.,]?\s*', ' ', summary, flags=re.IGNORECASE)
+        summary = re.sub(r'\s+', ' ', summary)  # 여러 공백을 하나로
+        
+        # 따옴표 제거 (작은따옴표, 큰따옴표 모두)
+        summary = re.sub(r'^["\'"]+|["\'"]+$', '', summary)  # 앞뒤 따옴표 제거
+        summary = re.sub(r'["\'"]', '', summary)  # 중간 따옴표도 제거
         summary = summary.strip()
         logger.debug(f"📝 접두사 제거 후: '{summary}' ({len(summary)}자)")
         
@@ -230,13 +266,31 @@ def summarize_title(text: str, max_length: int = 25) -> str:
                     # 마지막 단어를 포함해서 25자로
                     summary = summary[:max_length].strip()
         
-        # 최소 길이 확인 (너무 짧으면 첫 부분 사용)
+        # 최소 길이 확인 (너무 짧으면 핵심 키워드 기반으로 재구성)
         if len(summary) < 8:
-            # fallback: 첫 25자 사용하되 자연스럽게
-            summary = clean_text[:max_length]
-            last_space = summary.rfind(" ")
-            if last_space > 10:
-                summary = summary[:last_space].strip()
+            # fallback: 핵심 키워드 추출
+            keyword_patterns = [
+                r'(버팀목[전세자금]*|전세\s*[대출자금]*|전세자금|전세대출)',
+                r'([가-힣]+대출)',
+                r'([가-힣]+안내|[가-힣]+지원)',
+            ]
+            fallback_keywords = []
+            for pattern in keyword_patterns:
+                matches = re.findall(pattern, clean_text[:100], re.IGNORECASE)
+                if matches:
+                    fallback_keywords.extend([m[0] if isinstance(m, tuple) else m for m in matches])
+            
+            if fallback_keywords:
+                # 키워드 조합
+                summary = " ".join(list(dict.fromkeys(fallback_keywords[:2])))  # 중복 제거, 최대 2개
+                if len(summary) > max_length:
+                    summary = summary[:max_length]
+            else:
+                # 마지막 fallback: 첫 25자 사용하되 자연스럽게
+                summary = clean_text[:max_length]
+                last_space = summary.rfind(" ")
+                if last_space > 10:
+                    summary = summary[:last_space].strip()
         
         logger.info(f"✅ 제목 요약 완료: {len(clean_text)}자 -> {len(summary)}자 - '{summary}'")
         return summary
@@ -319,19 +373,9 @@ def summarize_conversation_batch(messages: List[Dict[str, str]]) -> str:
         device = next(model.parameters()).device
         logger.info(f"✅ 모델 준비 완료, 디바이스: {device}")
         
-        # mT5에 대화 요약 지시 (3-5문장, 핵심 정보 포함)
-        prompt_text = f"""다음 대화 내용을 간결하게 요약해주세요. 중요한 정보(이름, 위치, 질문 내용, 답변의 핵심 내용 등)는 반드시 포함하세요.
-- 대화의 핵심 내용만 요약
-- 사용자의 이름이나 중요한 정보는 반드시 포함
-- 질문과 답변의 주요 내용을 간결하게 정리
-- 불필요한 인사말이나 반복 내용은 제외
-- 3-5문장 정도로 간결하게 작성
-
-대화 내용:
-{clean_text}"""
-        
-        # mT5는 text-to-text 모델이므로 "summarize:" 프리픽스 사용
-        input_text = f"summarize: {prompt_text}"
+        # mT5는 간단한 프롬프트 형식 사용 (복잡한 지시사항보다는 직접적인 요약 지시)
+        # 한국어로 직접 요약 지시를 작성
+        input_text = f"대화 요약: {clean_text}"
         logger.debug(f"📤 프롬프트 길이: {len(input_text)}자")
         
         # 토큰화 (입력이 길 경우 잘라냄)
@@ -367,8 +411,17 @@ def summarize_conversation_batch(messages: List[Dict[str, str]]) -> str:
         summary = summary.strip()
         logger.debug(f"📥 원본 요약 결과: '{summary}' ({len(summary)}자)")
         
-        # 불필요한 접두사 제거 ("요약:", "제목:", "답변:" 등)
-        summary = re.sub(r'^(요약|제목|답변|응답|대화)[:：]\s*', '', summary, flags=re.IGNORECASE)
+        # extra_id 토큰 제거 (<extra_id_0>, <extra_id_1> 등)
+        summary = re.sub(r'<extra_id_\d+>', '', summary)
+        summary = summary.strip()
+        
+        # 불필요한 접두사 제거 ("요약:", "제목:", "답변:", "대화 요약:" 등)
+        summary = re.sub(r'^(요약|제목|답변|응답|대화|summarize|대화 요약)[:：]\s*', '', summary, flags=re.IGNORECASE)
+        summary = summary.strip()
+        
+        # 따옴표 제거 (작은따옴표, 큰따옴표 모두)
+        summary = re.sub(r'^["\'"]+|["\'"]+$', '', summary)  # 앞뒤 따옴표 제거
+        summary = re.sub(r'["\'"]', '', summary)  # 중간 따옴표도 제거
         summary = summary.strip()
         logger.debug(f"📝 접두사 제거 후: '{summary}' ({len(summary)}자)")
         

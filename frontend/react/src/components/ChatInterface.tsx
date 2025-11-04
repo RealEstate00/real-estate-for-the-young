@@ -10,8 +10,24 @@ import {
   ChevronLeft,
   ChevronRight,
   GripVertical,
+  Edit,
+  Trash2,
+  CheckSquare,
+  Check,
+  LogIn,
+  UserPlus,
+  User,
+  LogOut,
 } from "lucide-react";
 import { chat, clearMemory, ChatMessage, SourceInfo } from "../services/llmApi";
+import { chatWithSave, isAuthenticated } from "../services/conversationApi";
+import {
+  login,
+  register,
+  logout,
+  getUser,
+  User as UserType,
+} from "../services/authApi";
 
 interface Message extends ChatMessage {
   timestamp: Date;
@@ -97,6 +113,34 @@ export default function ChatInterface() {
     return saved === "true";
   });
   const [isResizing, setIsResizing] = useState(false);
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [selectedConversationIds, setSelectedConversationIds] = useState<
+    Set<string>
+  >(new Set());
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [authMode, setAuthMode] = useState<"login" | "register">("login");
+  const [currentUser, setCurrentUser] = useState<UserType | null>(() =>
+    getUser()
+  );
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [authLoading, setAuthLoading] = useState(false);
+
+  // 필드별 에러 상태
+  const [fieldErrors, setFieldErrors] = useState<{
+    email?: string;
+    username?: string;
+    password?: string;
+    fullName?: string;
+  }>({});
+
+  // 로그인/회원가입 폼 상태
+  const [loginEmail, setLoginEmail] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
+  const [registerEmail, setRegisterEmail] = useState("");
+  const [registerUsername, setRegisterUsername] = useState("");
+  const [registerPassword, setRegisterPassword] = useState("");
+  const [registerPasswordConfirm, setRegisterPasswordConfirm] = useState("");
+  const [registerFullName, setRegisterFullName] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const sidebarRef = useRef<HTMLDivElement>(null);
@@ -148,29 +192,44 @@ export default function ChatInterface() {
 
   // 대화 기록 로드
   useEffect(() => {
-    const savedConversations = localStorage.getItem(CONVERSATIONS_STORAGE_KEY);
-    const savedCurrentId = localStorage.getItem(CURRENT_CONVERSATION_ID_KEY);
+    try {
+      const savedConversations = localStorage.getItem(
+        CONVERSATIONS_STORAGE_KEY
+      );
+      const savedCurrentId = localStorage.getItem(CURRENT_CONVERSATION_ID_KEY);
 
-    if (savedConversations) {
-      const parsed = JSON.parse(savedConversations).map((conv: any) => ({
-        ...conv,
-        createdAt: new Date(conv.createdAt),
-        updatedAt: new Date(conv.updatedAt),
-        messages: conv.messages.map((msg: any) => ({
-          ...msg,
-          timestamp: new Date(msg.timestamp),
-        })),
-      }));
-      setConversations(parsed);
+      if (savedConversations) {
+        try {
+          const parsed = JSON.parse(savedConversations).map((conv: any) => ({
+            ...conv,
+            createdAt: conv.createdAt ? new Date(conv.createdAt) : new Date(),
+            updatedAt: conv.updatedAt ? new Date(conv.updatedAt) : new Date(),
+            messages: (conv.messages || []).map((msg: any) => ({
+              ...msg,
+              timestamp: msg.timestamp ? new Date(msg.timestamp) : new Date(),
+            })),
+          }));
+          setConversations(parsed);
 
-      if (savedCurrentId) {
-        const conv = parsed.find((c: Conversation) => c.id === savedCurrentId);
-        if (conv) {
-          setMessages(conv.messages);
-          setCurrentConversationId(savedCurrentId);
-          savedConversationIdRef.current = savedCurrentId;
+          if (savedCurrentId) {
+            const conv = parsed.find(
+              (c: Conversation) => c.id === savedCurrentId
+            );
+            if (conv) {
+              setMessages(conv.messages);
+              setCurrentConversationId(savedCurrentId);
+              savedConversationIdRef.current = savedCurrentId;
+            }
+          }
+        } catch (parseError) {
+          console.error("대화 기록 파싱 오류:", parseError);
+          // 잘못된 데이터는 삭제
+          localStorage.removeItem(CONVERSATIONS_STORAGE_KEY);
+          localStorage.removeItem(CURRENT_CONVERSATION_ID_KEY);
         }
       }
+    } catch (error) {
+      console.error("대화 기록 로드 오류:", error);
     }
 
     isInitialLoadRef.current = false;
@@ -209,26 +268,63 @@ export default function ChatInterface() {
           return prevConversations;
         }
 
-        // 제목 생성: 백엔드에서 제공한 title 사용 (mT5 요약) 또는 fallback
+        // 제목 생성: 백엔드에서 제공한 title 사용 (mT5 요약) 또는 AI 답변 기반 fallback
         const generateTitle = (msgs: Message[]): string => {
-          // 백엔드에서 제공한 제목 우선 사용
+          // 1순위: 백엔드에서 제공한 제목 사용 (AI 답변을 mT5로 요약한 것)
           if (conversationTitle) {
             return conversationTitle;
           }
 
-          // Fallback: 첫 번째 사용자 메시지 사용 (25자로 제한)
-          const firstUserMessage = msgs.find((m) => m.role === "user");
-          if (firstUserMessage) {
-            const userContent = firstUserMessage.content.slice(0, 25);
-            // 자연스러운 끊김 지점 찾기
-            if (userContent.length >= 25) {
-              const lastSpace = userContent.lastIndexOf(" ");
+          // 2순위: 첫 번째 AI 답변 메시지 사용 (사용자 질문이 아닌 답변 기반)
+          const firstAssistantMessage = msgs.find(
+            (m) => m.role === "assistant"
+          );
+          if (firstAssistantMessage) {
+            // HTML 태그와 마크다운 제거
+            let assistantContent = firstAssistantMessage.content
+              .replace(/<[^>]*>/g, "") // HTML 태그 제거
+              .replace(/\*\*/g, "") // 볼드 제거
+              .replace(/##\s*/g, "") // 헤더 제거
+              .replace(/#\s*/g, "") // 헤더 제거
+              .replace(/^\d+\.\s*/gm, "") // 번호 리스트 제거
+              .replace(/\n+/g, " ") // 줄바꿈을 공백으로
+              .replace(/\s+/g, " ") // 여러 공백을 하나로
+              .trim();
+
+            // 괄호 안 내용 제거 (예: "(송파구 30세 여성)")
+            assistantContent = assistantContent
+              .replace(/\([^)]*\)/g, "")
+              .trim();
+
+            // 인사말 제거 (시작 부분과 중간 부분 모두)
+            assistantContent = assistantContent
+              .replace(/^안녕하세요[.,]?\s*/i, "")
+              .replace(/\s*안녕하세요[.,]?\s*/gi, " ")
+              .trim();
+
+            // 따옴표 제거 (작은따옴표, 큰따옴표 모두)
+            assistantContent = assistantContent
+              .replace(/^["'"]+|["'"]+$/g, "") // 앞뒤 따옴표 제거
+              .replace(/["'"]/g, "") // 중간 따옴표도 제거
+              .trim();
+
+            // 25자 내외로 제한
+            if (assistantContent.length > 25) {
+              assistantContent = assistantContent.slice(0, 25);
+              const lastSpace = assistantContent.lastIndexOf(" ");
               if (lastSpace > 10) {
-                return userContent.substring(0, lastSpace).trim();
+                assistantContent = assistantContent
+                  .substring(0, lastSpace)
+                  .trim();
               }
             }
-            return userContent;
+
+            if (assistantContent) {
+              return assistantContent;
+            }
           }
+
+          // 3순위: 기본 제목
           return "새 대화";
         };
 
@@ -323,40 +419,88 @@ export default function ChatInterface() {
     setAbortController(controller);
 
     try {
-      // 대화 기록을 백엔드로 전송 (메시지 배열 형태)
-      const chatMessages: ChatMessage[] = updatedMessages.map((m) => ({
-        role: m.role,
-        content: m.content,
-      }));
+      // 로그인 여부 확인
+      const userIsAuthenticated = isAuthenticated();
 
-      const response = await chat(chatMessages, "ollama", controller.signal);
+      let aiMessage: Message;
+      let responseTitle: string | undefined;
 
-      const aiMessage: Message = {
-        role: "assistant",
-        content: response.message,
-        sources:
-          response.sources && response.sources.length > 0
-            ? [response.sources[0]]
-            : [],
-        timestamp: new Date(),
-      };
+      if (userIsAuthenticated) {
+        // 로그인 사용자: DB 저장 API 사용
+        console.log("🔐 로그인 사용자 - DB 저장 모드");
+
+        // conversation_id가 숫자면 사용, 아니면 null
+        const dbConversationId =
+          currentConversationId && !isNaN(Number(currentConversationId))
+            ? Number(currentConversationId)
+            : null;
+
+        const dbResponse = await chatWithSave({
+          conversation_id: dbConversationId,
+          message: input,
+          model_type: "ollama",
+        });
+
+        // DB에서 받은 conversation_id를 currentConversationId로 설정
+        if (
+          !currentConversationId ||
+          currentConversationId !== String(dbResponse.conversation_id)
+        ) {
+          setCurrentConversationId(String(dbResponse.conversation_id));
+        }
+
+        aiMessage = {
+          role: "assistant",
+          content: dbResponse.assistant_message.content,
+          sources:
+            dbResponse.sources && dbResponse.sources.length > 0
+              ? [dbResponse.sources[0]]
+              : [],
+          timestamp: new Date(),
+        };
+
+        // DB 응답에 제목이 있으면 사용 (첫 메시지인 경우)
+        if (dbResponse.title) {
+          responseTitle = dbResponse.title;
+          console.log("✅ 백엔드에서 받은 제목:", responseTitle);
+        } else if (updatedMessages.length === 1) {
+          console.warn("⚠️ 첫 번째 응답이지만 백엔드에서 제목을 받지 못했습니다.");
+        }
+      } else {
+        // 비로그인 사용자: localStorage만 사용
+        console.log("👤 비로그인 사용자 - localStorage 모드");
+
+        const chatMessages: ChatMessage[] = updatedMessages.map((m) => ({
+          role: m.role,
+          content: m.content,
+        }));
+
+        const response = await chat(chatMessages, "ollama", controller.signal);
+
+        aiMessage = {
+          role: "assistant",
+          content: response.message,
+          sources:
+            response.sources && response.sources.length > 0
+              ? [response.sources[0]]
+              : [],
+          timestamp: new Date(),
+        };
+
+        responseTitle = response.title;
+      }
 
       setMessages((prev) => {
         const updated = [...prev, aiMessage];
 
         // 백엔드에서 제공한 제목이 있고, 첫 번째 응답인 경우에만 제목 저장
-        if (response.title && prev.length === 1) {
-          // 첫 질문(prev) + 답변(aiMessage) = 2개
-          // 제목을 상태에 저장 (대화 기록 저장 시 사용)
-          console.log("✅ 백엔드에서 받은 제목:", response.title);
-          setConversationTitle(response.title);
+        if (responseTitle && prev.length === 1) {
+          console.log("✅ 백엔드에서 받은 제목:", responseTitle);
+          setConversationTitle(responseTitle);
         } else if (prev.length === 1) {
-          // 첫 응답인데 제목이 없는 경우 경고
-          console.warn("⚠️ 첫 번째 응답이지만 백엔드에서 제목을 받지 못했습니다.", {
-            hasTitle: !!response.title,
-            responseKeys: Object.keys(response),
-            messageLength: prev.length
-          });
+          console.warn(
+            "⚠️ 첫 번째 응답이지만 백엔드에서 제목을 받지 못했습니다."
+          );
         }
 
         return updated;
@@ -467,6 +611,65 @@ export default function ChatInterface() {
     }
   };
 
+  // 편집 모드 관련 핸들러
+  const handleToggleEditMode = (e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    setIsEditMode((prev) => {
+      const newValue = !prev;
+      console.log("편집 모드 토글:", newValue);
+      return newValue;
+    });
+    setSelectedConversationIds(new Set());
+  };
+
+  const handleToggleConversationSelect = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSelectedConversationIds((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(id)) {
+        newSet.delete(id);
+      } else {
+        newSet.add(id);
+      }
+      return newSet;
+    });
+  };
+
+  const handleSelectAll = () => {
+    if (selectedConversationIds.size === conversations.length) {
+      setSelectedConversationIds(new Set());
+    } else {
+      setSelectedConversationIds(new Set(conversations.map((c) => c.id)));
+    }
+  };
+
+  const handleDeleteSelected = () => {
+    if (selectedConversationIds.size === 0) return;
+
+    const count = selectedConversationIds.size;
+    if (window.confirm(`선택한 ${count}개의 대화를 삭제하시겠습니까?`)) {
+      const updated = conversations.filter(
+        (c) => !selectedConversationIds.has(c.id)
+      );
+      setConversations(updated);
+      localStorage.setItem(CONVERSATIONS_STORAGE_KEY, JSON.stringify(updated));
+
+      // 현재 선택된 대화가 삭제되면 새 대화로 전환
+      if (
+        currentConversationId &&
+        selectedConversationIds.has(currentConversationId)
+      ) {
+        handleNewConversation();
+      }
+
+      setSelectedConversationIds(new Set());
+      setIsEditMode(false);
+    }
+  };
+
   const handleKeyPress = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -481,6 +684,158 @@ export default function ChatInterface() {
   const handleResizeStart = (e: React.MouseEvent) => {
     e.preventDefault();
     setIsResizing(true);
+  };
+
+  // 인증 관련 핸들러
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    e.stopPropagation(); // 이벤트 전파 방지
+    setAuthError(null);
+    setAuthLoading(true);
+
+    try {
+      const response = await login({
+        email: loginEmail,
+        password: loginPassword,
+      });
+      setCurrentUser(response.user);
+      setShowAuthModal(false);
+      setLoginEmail("");
+      setLoginPassword("");
+      // 페이지 새로고침하여 대화 목록 다시 로드
+      window.location.reload();
+    } catch (error: any) {
+      setAuthError(error.message || "로그인에 실패했습니다.");
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    e.stopPropagation(); // 이벤트 전파 방지
+
+    console.log("회원가입 버튼 클릭됨");
+    setAuthError(null);
+    setFieldErrors({});
+    setAuthLoading(true);
+
+    // 필드별 에러 수집
+    const errors: typeof fieldErrors = {};
+
+    // 이메일 검증
+    if (!registerEmail.trim()) {
+      errors.email = "이메일을 입력해주세요.";
+    } else {
+      const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailPattern.test(registerEmail)) {
+        errors.email = "올바른 이메일 주소를 입력해주세요.";
+      }
+    }
+
+    // 사용자명 검증
+    if (!registerUsername.trim()) {
+      errors.username = "사용자명을 입력해주세요.";
+    } else {
+      const usernamePattern = /^[a-zA-Z0-9_-]+$/;
+      if (!usernamePattern.test(registerUsername)) {
+        errors.username =
+          "사용자명은 영문, 숫자, 하이픈(-), 밑줄(_)만 사용 가능합니다.";
+      } else if (registerUsername.length < 3 || registerUsername.length > 100) {
+        errors.username = "사용자명은 3자 이상 100자 이하여야 합니다.";
+      }
+    }
+
+    // 비밀번호 검증
+    if (!registerPassword) {
+      errors.password = "비밀번호를 입력해주세요.";
+    } else if (registerPassword.length < 8) {
+      errors.password = "비밀번호는 최소 8자 이상이어야 합니다.";
+    }
+
+    // 비밀번호 확인 검증
+    if (!registerPasswordConfirm) {
+      errors.password = "비밀번호 확인을 입력해주세요.";
+    } else if (registerPassword !== registerPasswordConfirm) {
+      errors.password = "비밀번호가 일치하지 않습니다.";
+    }
+
+    // 에러가 있으면 표시하고 중단
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
+      setAuthError("입력 정보를 확인해주세요.");
+      setAuthLoading(false);
+      console.log("유효성 검사 실패:", errors);
+      return;
+    }
+
+    console.log("유효성 검사 통과, API 호출 시작");
+
+    try {
+      const response = await register({
+        email: registerEmail,
+        username: registerUsername,
+        password: registerPassword,
+        password_confirm: registerPasswordConfirm,
+        full_name: registerFullName || undefined,
+      });
+      setCurrentUser(response.user);
+      setShowAuthModal(false);
+      setRegisterEmail("");
+      setRegisterUsername("");
+      setRegisterPassword("");
+      setRegisterPasswordConfirm("");
+      setRegisterFullName("");
+      // 페이지 새로고침하여 대화 목록 다시 로드
+      window.location.reload();
+    } catch (error: any) {
+      console.log("회원가입 에러:", error);
+      // 백엔드 에러 메시지 처리
+      const backendErrors: typeof fieldErrors = {};
+      let generalError = null;
+
+      if (error.message) {
+        if (error.message.includes("Email already registered")) {
+          backendErrors.email = "이미 등록된 이메일입니다.";
+        } else if (error.message.includes("Username already taken")) {
+          backendErrors.username = "이미 사용 중인 사용자명입니다.";
+        } else if (error.message.includes("Username must contain")) {
+          backendErrors.username =
+            "사용자명은 영문, 숫자, 하이픈(-), 밑줄(_)만 사용 가능합니다.";
+        } else {
+          generalError = error.message || "회원가입에 실패했습니다.";
+        }
+      } else {
+        generalError = "회원가입에 실패했습니다.";
+      }
+
+      if (Object.keys(backendErrors).length > 0) {
+        setFieldErrors(backendErrors);
+        setAuthError("입력 정보를 확인해주세요.");
+      } else {
+        setAuthError(generalError);
+      }
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleLogout = () => {
+    if (window.confirm("로그아웃하시겠습니까?")) {
+      logout();
+      setCurrentUser(null);
+      // 새 대화로 초기화
+      handleNewConversation();
+      // 페이지 새로고침
+      window.location.reload();
+    }
+  };
+
+  const handleOpenAuthModal = (mode: "login" | "register") => {
+    setAuthMode(mode);
+    setShowAuthModal(true);
+    setAuthError(null);
+    setFieldErrors({});
   };
 
   return (
@@ -504,12 +859,67 @@ export default function ChatInterface() {
             </div>
           </div>
 
-          <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+          <div className="p-4 border-b border-gray-200 flex items-center justify-between relative z-20">
             <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
               <History className="w-5 h-5" />
               대화 기록
             </h2>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 relative z-20">
+              {!isEditMode && (
+                <button
+                  onClick={(e) => handleToggleEditMode(e)}
+                  className="text-gray-500 hover:text-gray-700 transition-colors relative z-10"
+                  title="편집"
+                  type="button"
+                >
+                  <Edit className="w-5 h-5" />
+                </button>
+              )}
+              {isEditMode && (
+                <>
+                  <button
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      handleSelectAll();
+                    }}
+                    className="text-gray-500 hover:text-blue-600 transition-colors relative z-10"
+                    title={
+                      selectedConversationIds.size === conversations.length
+                        ? "전체 해제"
+                        : "전체 선택"
+                    }
+                    type="button"
+                  >
+                    <CheckSquare className="w-5 h-5" />
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      handleDeleteSelected();
+                    }}
+                    disabled={selectedConversationIds.size === 0}
+                    className={`transition-colors relative z-10 ${
+                      selectedConversationIds.size === 0
+                        ? "text-gray-300 cursor-not-allowed"
+                        : "text-red-500 hover:text-red-700"
+                    }`}
+                    title="선택 항목 삭제"
+                    type="button"
+                  >
+                    <Trash2 className="w-5 h-5" />
+                  </button>
+                  <button
+                    onClick={(e) => handleToggleEditMode(e)}
+                    className="text-green-500 hover:text-green-700 transition-colors relative z-10"
+                    title="완료"
+                    type="button"
+                  >
+                    <Check className="w-5 h-5" />
+                  </button>
+                </>
+              )}
               <button
                 onClick={handleToggleSidebar}
                 className="hidden md:flex text-gray-500 hover:text-gray-700 transition-colors"
@@ -533,45 +943,76 @@ export default function ChatInterface() {
               <Send className="w-4 h-4" />새 대화 시작
             </button>
             <div className="space-y-2">
-              {conversations.map((conversation) => (
-                <div
-                  key={conversation.id}
-                  onClick={() => handleSelectConversation(conversation)}
-                  className={`p-3 rounded-lg cursor-pointer transition-colors relative group ${
-                    currentConversationId === conversation.id
-                      ? "bg-blue-50 border border-blue-200"
-                      : "bg-gray-50 hover:bg-gray-100 border border-transparent"
-                  }`}
-                >
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-800 truncate">
-                        {conversation.title}
-                      </p>
-                      <p className="text-xs text-gray-500 mt-1">
-                        {conversation.messages.length}개 메시지
-                      </p>
-                      <p className="text-xs text-gray-400 mt-1">
-                        {conversation.updatedAt.toLocaleDateString("ko-KR", {
-                          month: "short",
-                          day: "numeric",
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                      </p>
+              {conversations.map((conversation) => {
+                const isSelected = selectedConversationIds.has(conversation.id);
+                return (
+                  <div
+                    key={conversation.id}
+                    onClick={() =>
+                      !isEditMode && handleSelectConversation(conversation)
+                    }
+                    className={`p-3 rounded-lg transition-colors relative group ${
+                      isEditMode
+                        ? isSelected
+                          ? "bg-blue-100 border border-blue-300"
+                          : "bg-gray-50 hover:bg-gray-100 border border-transparent"
+                        : currentConversationId === conversation.id
+                        ? "bg-blue-50 border border-blue-200"
+                        : "bg-gray-50 hover:bg-gray-100 border border-transparent"
+                    } ${!isEditMode ? "cursor-pointer" : ""}`}
+                  >
+                    <div className="flex items-start gap-3">
+                      {isEditMode && (
+                        <div
+                          onClick={(e) =>
+                            handleToggleConversationSelect(conversation.id, e)
+                          }
+                          className="flex-shrink-0 mt-0.5 cursor-pointer"
+                        >
+                          <div
+                            className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
+                              isSelected
+                                ? "bg-blue-600 border-blue-600"
+                                : "bg-white border-gray-300"
+                            }`}
+                          >
+                            {isSelected && (
+                              <Check className="w-3 h-3 text-white" />
+                            )}
+                          </div>
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-800 truncate">
+                          {conversation.title}
+                        </p>
+                        <p className="text-xs text-gray-500 mt-1">
+                          {conversation.messages.length}개 메시지
+                        </p>
+                        <p className="text-xs text-gray-400 mt-1">
+                          {conversation.updatedAt.toLocaleDateString("ko-KR", {
+                            month: "short",
+                            day: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </p>
+                      </div>
+                      {!isEditMode && (
+                        <button
+                          onClick={(e) =>
+                            handleDeleteConversation(conversation.id, e)
+                          }
+                          className="ml-2 opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 transition-opacity flex-shrink-0"
+                          title="삭제"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      )}
                     </div>
-                    <button
-                      onClick={(e) =>
-                        handleDeleteConversation(conversation.id, e)
-                      }
-                      className="ml-2 opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 transition-opacity"
-                      title="삭제"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
                   </div>
-                </div>
-              ))}
+                );
+              })}
               {conversations.length === 0 && (
                 <div className="text-center py-8 text-gray-500 text-sm">
                   대화 기록이 없습니다
@@ -603,10 +1044,10 @@ export default function ChatInterface() {
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col min-w-0">
-      {/* Header */}
-      <header className="bg-white border-b border-gray-200 shadow-sm">
+        {/* Header */}
+        <header className="bg-white border-b border-gray-200 shadow-sm">
           <div className="px-4 py-4 flex justify-between items-center">
-          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3">
               <button
                 onClick={() => setSidebarOpen(true)}
                 className="md:hidden text-gray-600 hover:text-gray-800"
@@ -623,161 +1064,198 @@ export default function ChatInterface() {
                 </button>
               )}
               <Home className="w-6 h-6 text-blue-600 hidden md:block" />
-            <h1 className="text-xl font-bold text-gray-800">
-              청년을 위한 서울 주택 안내
-            </h1>
-          </div>
-          <button
-            onClick={handleClearChat}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
-            title="대화 초기화"
-          >
-            <RotateCcw className="w-4 h-4" />
-              <span className="hidden md:inline">대화 초기화</span>
-          </button>
-        </div>
-      </header>
-
-      {/* Messages Container */}
-      <div className="flex-1 overflow-y-auto">
-        <div className="max-w-4xl mx-auto px-4 py-6">
-          {messages.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-center py-12">
-              <div className="bg-white rounded-2xl p-8 shadow-sm border border-gray-200 max-w-md">
-                <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <Home className="w-8 h-8 text-blue-600" />
-                </div>
-                <h2 className="text-xl font-semibold text-gray-800 mb-2">
-                  무엇을 도와드릴까요?
-                </h2>
-                <p className="text-sm text-gray-600 mb-4">
-                  서울시 청년 주택에 대해 궁금한 점을 물어보세요
-                </p>
-                <div className="bg-gray-50 rounded-lg p-3 text-left">
-                  <p className="text-xs font-semibold text-gray-700 mb-2">
-                    예시 질문:
-                  </p>
-                  <ul className="text-xs text-gray-600 space-y-1">
-                    <li>• 강남역 근처 청년주택 알려줘</li>
-                    <li>• 대학가 근처의 집을 찾고 있어</li>
-                      <li>• 청년 월세 지원금을 알고 싶어</li>
-                  </ul>
-                  </div>
-              </div>
+              <h1 className="text-xl font-bold text-gray-800">
+                청년을 위한 서울 주택 안내
+              </h1>
             </div>
-          ) : (
-            <div className="space-y-4">
-              {messages.map((message, index) => (
-                <div
-                  key={index}
-                  className={`flex ${
-                    message.role === "user" ? "justify-end" : "justify-start"
-                  }`}
-                >
+            <div className="flex items-center gap-2">
+              {currentUser ? (
+                <div className="flex items-center gap-2">
+                  <div className="hidden md:flex items-center gap-2 px-3 py-2 text-sm text-gray-700">
+                    <User className="w-4 h-4" />
+                    <span className="font-medium">{currentUser.username}</span>
+                  </div>
+                  <button
+                    onClick={handleLogout}
+                    className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+                    title="로그아웃"
+                  >
+                    <LogOut className="w-4 h-4" />
+                    <span className="hidden md:inline">로그아웃</span>
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => handleOpenAuthModal("login")}
+                    className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
+                    title="로그인"
+                  >
+                    <LogIn className="w-4 h-4" />
+                    <span className="hidden md:inline">로그인</span>
+                  </button>
+                  <button
+                    onClick={() => handleOpenAuthModal("register")}
+                    className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
+                    title="회원가입"
+                  >
+                    <UserPlus className="w-4 h-4" />
+                    <span className="hidden md:inline">회원가입</span>
+                  </button>
+                </div>
+              )}
+              <button
+                onClick={handleClearChat}
+                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+                title="대화 초기화"
+              >
+                <RotateCcw className="w-4 h-4" />
+                <span className="hidden md:inline">대화 초기화</span>
+              </button>
+            </div>
+          </div>
+        </header>
+
+        {/* Messages Container */}
+        <div className="flex-1 overflow-y-auto">
+          <div className="max-w-4xl mx-auto px-4 py-6">
+            {messages.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full text-center py-12">
+                <div className="bg-white rounded-2xl p-8 shadow-sm border border-gray-200 max-w-md">
+                  <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <Home className="w-8 h-8 text-blue-600" />
+                  </div>
+                  <h2 className="text-xl font-semibold text-gray-800 mb-2">
+                    무엇을 도와드릴까요?
+                  </h2>
+                  <p className="text-sm text-gray-600 mb-4">
+                    서울시 청년 주택에 대해 궁금한 점을 물어보세요
+                  </p>
+                  <div className="bg-gray-50 rounded-lg p-3 text-left">
+                    <p className="text-xs font-semibold text-gray-700 mb-2">
+                      예시 질문:
+                    </p>
+                    <ul className="text-xs text-gray-600 space-y-1">
+                      <li>• 강남역 근처 청년주택 알려줘</li>
+                      <li>• 대학가 근처의 집을 찾고 있어</li>
+                      <li>• 청년 월세 지원금을 알고 싶어</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {messages.map((message, index) => (
                   <div
-                    className={`max-w-[75%] rounded-2xl px-4 py-3 shadow-sm ${
-                      message.role === "user"
-                        ? "bg-blue-600 text-white"
-                        : "bg-white text-gray-800 border border-gray-200"
+                    key={index}
+                    className={`flex ${
+                      message.role === "user" ? "justify-end" : "justify-start"
                     }`}
                   >
                     <div
-                      className="text-sm leading-relaxed text-left"
-                      dangerouslySetInnerHTML={{
-                        __html: formatMessage(message.content),
-                      }}
-                    />
+                      className={`max-w-[75%] rounded-2xl px-4 py-3 shadow-sm ${
+                        message.role === "user"
+                          ? "bg-blue-600 text-white"
+                          : "bg-white text-gray-800 border border-gray-200"
+                      }`}
+                    >
+                      <div
+                        className="text-sm leading-relaxed text-left"
+                        dangerouslySetInnerHTML={{
+                          __html: formatMessage(message.content),
+                        }}
+                      />
 
-                    {message.sources && message.sources.length > 0 && (
-                      <div className="mt-3 pt-3 border-t border-gray-200">
-                        <div className="flex items-center gap-1 mb-2 text-left">
-                          <FileText className="w-3 h-3 text-gray-500" />
-                          <p className="text-xs font-semibold text-gray-600">
-                            참고 문서:
-                          </p>
-                        </div>
-                        {/* 상위 1개 source만 표시 */}
-                        {message.sources[0] && (
-                          <div className="text-xs text-gray-600 bg-gray-50 rounded px-2 py-1 text-left">
+                      {message.sources && message.sources.length > 0 && (
+                        <div className="mt-3 pt-3 border-t border-gray-200">
+                          <div className="flex items-center gap-1 mb-2 text-left">
+                            <FileText className="w-3 h-3 text-gray-500" />
+                            <p className="text-xs font-semibold text-gray-600">
+                              참고 문서:
+                            </p>
+                          </div>
+                          {/* 상위 1개 source만 표시 */}
+                          {message.sources[0] && (
+                            <div className="text-xs text-gray-600 bg-gray-50 rounded px-2 py-1 text-left">
                               • {message.sources[0].title}
                               {message.sources[0].district && (
                                 <span> ({message.sources[0].district})</span>
                               )}
-                            {message.sources[0].address && (
-                              <div className="text-xs text-gray-500 mt-1 text-left">
-                                {message.sources[0].address}
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    )}
+                              {message.sources[0].address && (
+                                <div className="text-xs text-gray-500 mt-1 text-left">
+                                  {message.sources[0].address}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
 
-                    <p
-                      className={`text-xs mt-2 text-left ${
-                        message.role === "user"
-                          ? "text-blue-200"
-                          : "text-gray-500"
-                      }`}
-                    >
-                      {message.timestamp.toLocaleTimeString("ko-KR", {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                    </p>
-                  </div>
-                </div>
-              ))}
-
-              {isLoading && (
-                <div className="flex justify-start">
-                  <div className="bg-white border border-gray-200 rounded-2xl px-4 py-3 shadow-sm">
-                    <div className="flex items-center gap-2">
-                      <div className="flex gap-1">
-                        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
-                        <div
-                          className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
-                          style={{ animationDelay: "0.1s" }}
-                        ></div>
-                        <div
-                          className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
-                          style={{ animationDelay: "0.2s" }}
-                        ></div>
-                      </div>
-                      <span className="text-xs text-gray-500 text-left">
-                        답변 생성 중...
-                      </span>
+                      <p
+                        className={`text-xs mt-2 text-left ${
+                          message.role === "user"
+                            ? "text-blue-200"
+                            : "text-gray-500"
+                        }`}
+                      >
+                        {message.timestamp.toLocaleTimeString("ko-KR", {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </p>
                     </div>
                   </div>
-                </div>
-              )}
+                ))}
 
-              <div ref={messagesEndRef} />
-            </div>
-          )}
-        </div>
-      </div>
+                {isLoading && (
+                  <div className="flex justify-start">
+                    <div className="bg-white border border-gray-200 rounded-2xl px-4 py-3 shadow-sm">
+                      <div className="flex items-center gap-2">
+                        <div className="flex gap-1">
+                          <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
+                          <div
+                            className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
+                            style={{ animationDelay: "0.1s" }}
+                          ></div>
+                          <div
+                            className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
+                            style={{ animationDelay: "0.2s" }}
+                          ></div>
+                        </div>
+                        <span className="text-xs text-gray-500 text-left">
+                          답변 생성 중...
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
-      {/* Input Area */}
-      <div className="bg-white border-t border-gray-200 shadow-lg">
-        <div className="max-w-4xl mx-auto px-4 py-4">
-          <div className="flex gap-3">
-            <div className="flex-1 relative">
-              <textarea
-                ref={textareaRef}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyPress={handleKeyPress}
-                placeholder="메시지를 입력하세요..."
-                className="w-full px-4 py-3 pr-12 border border-gray-300 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                rows={2}
-                disabled={isLoading}
-                maxLength={1000}
-              />
-              <div className="absolute bottom-2 right-2 text-xs text-gray-400">
-                {input.length}/1000
+                <div ref={messagesEndRef} />
               </div>
-            </div>
+            )}
+          </div>
+        </div>
+
+        {/* Input Area */}
+        <div className="bg-white border-t border-gray-200 shadow-lg">
+          <div className="max-w-4xl mx-auto px-4 py-4">
+            <div className="flex gap-3">
+              <div className="flex-1 relative">
+                <textarea
+                  ref={textareaRef}
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyPress={handleKeyPress}
+                  placeholder="메시지를 입력하세요..."
+                  className="w-full px-4 py-3 pr-12 bg-white border border-gray-300 text-gray-900 placeholder-gray-400 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                  rows={2}
+                  disabled={isLoading}
+                  maxLength={1000}
+                />
+                <div className="absolute bottom-2 right-2 text-xs text-gray-400">
+                  {input.length}/1000
+                </div>
+              </div>
               {isLoading ? (
                 <button
                   onClick={handleStop}
@@ -787,22 +1265,283 @@ export default function ChatInterface() {
                   중지
                 </button>
               ) : (
-            <button
-              onClick={handleSend}
+                <button
+                  onClick={handleSend}
                   disabled={!input.trim()}
-              className="px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex items-center gap-2 font-medium shadow-sm"
-            >
-              <Send className="w-4 h-4" />
-              전송
-            </button>
+                  className="px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex items-center gap-2 font-medium shadow-sm"
+                >
+                  <Send className="w-4 h-4" />
+                  전송
+                </button>
               )}
-          </div>
-          <p className="text-xs text-gray-500 mt-2 text-center">
-            Enter로 전송 • Shift+Enter로 줄바꿈
-          </p>
+            </div>
+            <p className="text-xs text-gray-500 mt-2 text-center">
+              Enter로 전송 • Shift+Enter로 줄바꿈
+            </p>
           </div>
         </div>
       </div>
+
+      {/* 인증 모달 */}
+      {showAuthModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-2xl font-bold text-gray-800">
+                  {authMode === "login" ? "로그인" : "회원가입"}
+                </h2>
+                <button
+                  onClick={() => {
+                    setShowAuthModal(false);
+                    setAuthError(null);
+                    setFieldErrors({});
+                  }}
+                  className="text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+
+              {authError && (
+                <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+                  <p className="text-sm text-red-600">{authError}</p>
+                </div>
+              )}
+
+              {authMode === "login" ? (
+                <form onSubmit={handleLogin} className="space-y-4" noValidate>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      이메일
+                    </label>
+                    <input
+                      type="email"
+                      value={loginEmail}
+                      onChange={(e) => setLoginEmail(e.target.value)}
+                      required
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                      placeholder="example@email.com"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      비밀번호
+                    </label>
+                    <input
+                      type="password"
+                      value={loginPassword}
+                      onChange={(e) => setLoginPassword(e.target.value)}
+                      required
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                      placeholder="비밀번호를 입력하세요"
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={authLoading}
+                    className="w-full px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors font-medium"
+                  >
+                    {authLoading ? "로그인 중..." : "로그인"}
+                  </button>
+                  <div className="text-center text-sm text-gray-600">
+                    계정이 없으신가요?{" "}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAuthMode("register");
+                        setAuthError(null);
+                        setFieldErrors({});
+                      }}
+                      className="text-blue-600 hover:text-blue-700 font-medium"
+                    >
+                      회원가입
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <form
+                  onSubmit={handleRegister}
+                  className="space-y-4"
+                  noValidate
+                >
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      이메일 <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="email"
+                      value={registerEmail}
+                      onChange={(e) => {
+                        setRegisterEmail(e.target.value);
+                        // 에러가 있으면 필드 에러 초기화
+                        if (fieldErrors.email) {
+                          setFieldErrors((prev) => ({
+                            ...prev,
+                            email: undefined,
+                          }));
+                        }
+                      }}
+                      required
+                      className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 text-gray-900 ${
+                        fieldErrors.email
+                          ? "border-red-500 focus:ring-red-500 focus:border-red-500"
+                          : "border-gray-300 focus:ring-blue-500 focus:border-blue-500"
+                      }`}
+                      placeholder="example@email.com"
+                    />
+                    {fieldErrors.email && (
+                      <p className="text-xs text-red-600 mt-1">
+                        {fieldErrors.email}
+                      </p>
+                    )}
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      사용자명 <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={registerUsername}
+                      onChange={(e) => {
+                        // 영문, 숫자, 하이픈, 밑줄만 허용
+                        const value = e.target.value;
+                        const filtered = value.replace(/[^a-zA-Z0-9_-]/g, "");
+                        setRegisterUsername(filtered);
+                        // 에러가 있으면 필드 에러 초기화
+                        if (fieldErrors.username) {
+                          setFieldErrors((prev) => ({
+                            ...prev,
+                            username: undefined,
+                          }));
+                        }
+                      }}
+                      required
+                      minLength={3}
+                      maxLength={100}
+                      className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 text-gray-900 ${
+                        fieldErrors.username
+                          ? "border-red-500 focus:ring-red-500 focus:border-red-500"
+                          : "border-gray-300 focus:ring-blue-500 focus:border-blue-500"
+                      }`}
+                      placeholder="사용자명 (영문, 숫자, -, _만 가능)"
+                    />
+                    {fieldErrors.username ? (
+                      <p className="text-xs text-red-600 mt-1">
+                        {fieldErrors.username}
+                      </p>
+                    ) : (
+                      <p className="text-xs text-gray-500 mt-1">
+                        3-100자, 영문, 숫자, -, _만 사용 가능
+                      </p>
+                    )}
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      비밀번호 <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="password"
+                      value={registerPassword}
+                      onChange={(e) => {
+                        setRegisterPassword(e.target.value);
+                        // 에러가 있으면 필드 에러 초기화
+                        if (fieldErrors.password) {
+                          setFieldErrors((prev) => ({
+                            ...prev,
+                            password: undefined,
+                          }));
+                        }
+                      }}
+                      required
+                      minLength={8}
+                      className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 text-gray-900 ${
+                        fieldErrors.password
+                          ? "border-red-500 focus:ring-red-500 focus:border-red-500"
+                          : "border-gray-300 focus:ring-blue-500 focus:border-blue-500"
+                      }`}
+                      placeholder="최소 8자 이상"
+                    />
+                    {fieldErrors.password && (
+                      <p className="text-xs text-red-600 mt-1">
+                        {fieldErrors.password}
+                      </p>
+                    )}
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      비밀번호 확인 <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="password"
+                      value={registerPasswordConfirm}
+                      onChange={(e) => {
+                        setRegisterPasswordConfirm(e.target.value);
+                        // 에러가 있으면 필드 에러 초기화
+                        if (fieldErrors.password) {
+                          setFieldErrors((prev) => ({
+                            ...prev,
+                            password: undefined,
+                          }));
+                        }
+                      }}
+                      required
+                      minLength={8}
+                      className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 text-gray-900 ${
+                        fieldErrors.password
+                          ? "border-red-500 focus:ring-red-500 focus:border-red-500"
+                          : "border-gray-300 focus:ring-blue-500 focus:border-blue-500"
+                      }`}
+                      placeholder="비밀번호를 다시 입력하세요"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      이름 (선택)
+                    </label>
+                    <input
+                      type="text"
+                      value={registerFullName}
+                      onChange={(e) => setRegisterFullName(e.target.value)}
+                      maxLength={200}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                      placeholder="이름 (선택사항)"
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={authLoading}
+                    className="w-full px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors font-medium flex items-center justify-center gap-2"
+                  >
+                    {authLoading ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                        회원가입 중...
+                      </>
+                    ) : (
+                      "회원가입"
+                    )}
+                  </button>
+                  <div className="text-center text-sm text-gray-600">
+                    이미 계정이 있으신가요?{" "}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAuthMode("login");
+                        setAuthError(null);
+                        setFieldErrors({});
+                      }}
+                      className="text-blue-600 hover:text-blue-700 font-medium"
+                    >
+                      로그인
+                    </button>
+                  </div>
+                </form>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
