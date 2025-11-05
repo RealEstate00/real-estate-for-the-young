@@ -51,7 +51,7 @@ dependencies = [
     "pydantic>=2.9.0",
     "pydantic-settings==2.5.0",
     "pydantic[email]>=2.9.0",  # EmailStr validation support
-    "email-validator>=2.0.0",
+    "email-validator==2.3.0",  # Email validation support - fixed version for compatibility
     "chardet==5.2.0",
     
     # Torch (CPU wheel 인덱스 명시)
