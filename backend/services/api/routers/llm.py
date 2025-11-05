@@ -591,15 +591,34 @@ async def chat(request: ChatRequest, rag_system: RAGSystem = Depends(get_rag_sys
             }
         }
         
-        response = requests.post(
-            f"{ollama_url}/api/generate",
-            json=payload,
-            timeout=180
-        )
-        response.raise_for_status()
-        
-        result = response.json()
-        answer = result.get("response", "").strip()
+        try:
+            response = requests.post(
+                f"{ollama_url}/api/generate",
+                json=payload,
+                timeout=120  # 180초 → 120초로 감소 (더 빠른 피드백)
+            )
+            response.raise_for_status()
+            
+            result = response.json()
+            answer = result.get("response", "").strip()
+        except requests.exceptions.ReadTimeout:
+            logger.error(f"Ollama 응답 타임아웃 (120초 초과). Ollama 서버가 응답하지 않습니다.")
+            raise HTTPException(
+                status_code=504,
+                detail="답변 생성 시간이 초과되었습니다. Ollama 서버 응답이 너무 느립니다. 잠시 후 다시 시도해주세요."
+            )
+        except requests.exceptions.ConnectionError as conn_err:
+            logger.error(f"Ollama 서버 연결 실패: {conn_err}")
+            raise HTTPException(
+                status_code=503,
+                detail="Ollama 서버에 연결할 수 없습니다. Ollama가 실행 중인지 확인해주세요. (http://localhost:11434)"
+            )
+        except requests.exceptions.RequestException as req_err:
+            logger.error(f"Ollama 요청 오류: {req_err}")
+            raise HTTPException(
+                status_code=502,
+                detail=f"Ollama 서버 요청 중 오류가 발생했습니다: {str(req_err)}"
+            )
         
         # mT5-base를 사용하여 제목 요약 생성 (첫 번째 AI 답변인 경우에만)
         title = None
@@ -658,9 +677,28 @@ async def chat(request: ChatRequest, rag_system: RAGSystem = Depends(get_rag_sys
             title=title
         )
         
+    except HTTPException:
+        # 이미 처리된 HTTP 예외는 그대로 전달
+        raise
     except Exception as e:
         logger.error(f"Error in chat: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        # 타임아웃 관련 에러 체크
+        error_str = str(e).lower()
+        if "timeout" in error_str or "시간 초과" in str(e):
+            raise HTTPException(
+                status_code=504,
+                detail="답변 생성 시간이 초과되었습니다. 잠시 후 다시 시도해주세요."
+            )
+        elif "connection" in error_str or "연결" in str(e):
+            raise HTTPException(
+                status_code=503,
+                detail="서버 연결에 문제가 발생했습니다. 잠시 후 다시 시도해주세요."
+            )
+        else:
+            raise HTTPException(
+                status_code=500,
+                detail="답변 생성 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요."
+            )
 
 
 @router.get("/health")

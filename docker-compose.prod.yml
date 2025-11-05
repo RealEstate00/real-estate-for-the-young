@@ -32,7 +32,7 @@ services:
   # API 서버 - Docker Hub에서 이미지 pull
   api:
     # Docker Hub 이미지: jina1003/seoul-housing-api:latest
-    # 멀티플랫폼 이미지: 호스트 플랫폼에 맞는 이미지 자동 선택 (amd64/arm64)
+    # 멀티플랫폼 이미지: 호스트 플랫폼에 맞는 이미지 자동 선택 (amd64/arm64)ㅔ
     image: jina1003/seoul-housing-api:latest
     container_name: seoul_housing_api
     environment:
