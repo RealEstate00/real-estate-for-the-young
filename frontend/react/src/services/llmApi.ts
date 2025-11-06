@@ -35,6 +35,7 @@ export interface SourceInfo {
 export interface ChatResponse {
   message: string;
   sources: SourceInfo[];
+  title?: string; // 대화 제목 (mT5 요약)
 }
 
 export interface ChatRequest {
@@ -42,13 +43,21 @@ export interface ChatRequest {
   model_type: string;
 }
 
-export const chat = async (request: ChatRequest): Promise<ChatResponse> => {
+export const chat = async (
+  messages: ChatMessage[],
+  model_type: string = "ollama",
+  abortSignal?: AbortSignal
+): Promise<ChatResponse> => {
   const response = await fetch(`${API_URL}/api/llm/chat`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify(request),
+    signal: abortSignal,
+    body: JSON.stringify({
+      messages,
+      model_type,
+    }),
   });
 
   if (!response.ok) {

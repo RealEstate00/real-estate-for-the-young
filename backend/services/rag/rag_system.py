@@ -14,7 +14,7 @@ from .retrieval.reranker import BaseReranker, KeywordReranker, SemanticReranker,
 from .augmentation.augmenter import DocumentAugmenter, AugmentedContext
 from .augmentation.formatters import BaseFormatter, PromptFormatter, MarkdownFormatter
 from .generation.generator import LLMGenerator, OllamaGenerator, GenerationConfig, GeneratedAnswer
-from .models.config import EmbeddingModelType
+from .models.config import EmbeddingModelType, get_default_model_type
 
 logger = logging.getLogger(__name__)
 
@@ -35,10 +35,10 @@ class RAGResponse:
 
 class RAGSystem:
     """통합 RAG 시스템"""
-    
+
     def __init__(
         self,
-        model_type: EmbeddingModelType = EmbeddingModelType.MULTILINGUAL_E5_SMALL,
+        model_type: Optional[EmbeddingModelType] = None,
         db_config: Optional[Dict[str, str]] = None,
         device: Optional[str] = None,
         reranker: Optional[BaseReranker] = None,
@@ -50,7 +50,7 @@ class RAGSystem:
     ):
         """
         Args:
-            model_type: 사용할 임베딩 모델
+            model_type: 사용할 임베딩 모델 (None이면 환경 변수 RAG_EMBEDDING_MODEL에서 읽음, 기본값: E5_LARGE)
             db_config: 데이터베이스 연결 설정
             device: 디바이스
             reranker: 리랭킹 모듈
@@ -60,6 +60,10 @@ class RAGSystem:
             llm_generator: LLM 생성기
             enable_generation: 생성 기능 활성화 여부
         """
+        # 기본 모델 타입 설정
+        if model_type is None:
+            model_type = get_default_model_type()
+
         # Retrieval 컴포넌트
         self.retriever = Retriever(
             model_type=model_type,

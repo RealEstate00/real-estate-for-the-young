@@ -162,6 +162,31 @@ def get_model_by_name(model_name: str) -> Optional[ModelConfig]:
     return None
 
 
+def get_default_model_type() -> EmbeddingModelType:
+    """
+    기본 임베딩 모델 타입 반환
+    환경 변수 RAG_EMBEDDING_MODEL로 설정 가능 (기본값: E5_LARGE)
+
+    지원 값:
+    - E5_SMALL: intfloat/multilingual-e5-small
+    - E5_BASE: intfloat/multilingual-e5-base
+    - E5_LARGE: intfloat/multilingual-e5-large (기본값)
+    - KAKAO: kakaobank/kf-deberta-base
+    """
+    import os
+
+    model_env = os.getenv('RAG_EMBEDDING_MODEL', 'E5_LARGE').upper()
+
+    model_mapping = {
+        'E5_SMALL': EmbeddingModelType.MULTILINGUAL_E5_SMALL,
+        'E5_BASE': EmbeddingModelType.MULTILINGUAL_E5_BASE,
+        'E5_LARGE': EmbeddingModelType.MULTILINGUAL_E5_LARGE,
+        'KAKAO': EmbeddingModelType.KAKAOBANK_DEBERTA,
+    }
+
+    return model_mapping.get(model_env, EmbeddingModelType.MULTILINGUAL_E5_LARGE)
+
+
 def print_model_comparison():
     """모델 비교 정보 출력"""
     print("=" * 100)

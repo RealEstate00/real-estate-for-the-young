@@ -32,7 +32,11 @@ services:
   # API 서버 - Docker Hub에서 이미지 pull
   api:
     # Docker Hub 이미지: jina1003/seoul-housing-api:latest
+    # 멀티플랫폼 이미지: 호스트 플랫폼에 맞는 이미지 자동 선택 (amd64/arm64)
+    # Windows/AMD64 환경에서는 명시적으로 플랫폼을 지정하지 않으면 자동 선택됨
     image: jina1003/seoul-housing-api:latest
+    pull_policy: always
+    platform: linux/amd64 # AMD64 환경에서 명시적으로 지정 (Windows 호환성)
     container_name: seoul_housing_api
     environment:
       - DATABASE_URL=postgresql://${PG_USER:-postgres}:${PG_PASSWORD:-post1234}@postgres:5432/${PG_DB:-rey}
@@ -73,7 +77,10 @@ services:
   # 프론트엔드 - Docker Hub에서 이미지 pull (빌드된 정적 파일을 Nginx로 서빙)
   frontend:
     # Docker Hub 이미지: jina1003/seoul-housing-frontend:latest
+    # 멀티플랫폼 이미지: 호스트 플랫폼에 맞는 이미지 자동 선택 (amd64/arm64)
     image: jina1003/seoul-housing-frontend:latest
+    pull_policy: always
+    platform: linux/amd64 # AMD64 환경에서 명시적으로 지정 (Windows 호환성)
     container_name: seoul_housing_frontend
     environment:
       - VITE_API_URL=http://localhost:8000
