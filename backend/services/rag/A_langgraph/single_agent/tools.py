@@ -19,21 +19,49 @@ from langchain.tools import tool
 # ========== LLM 설정 ==========
 load_dotenv()  # .env 파일 로드
 
-llm_openai = ChatOpenAI(
-    model="gpt-5-nano",
-    reasoning_effort="high",        # 논리성 강화
-)
+# LLM 인스턴스를 모듈 로드 시점이 아닌 사용 시점에 생성하도록 변경
+_llm_openai = None
+_llm_ollama = None
 
-llm_ollama = OllamaLLM(
-    model="gemma3:4b",
-    reasoning_effort="high",
-)
+def get_llm_openai():
+    """OpenAI LLM 인스턴스를 반환 (lazy initialization)"""
+    global _llm_openai
+    if _llm_openai is None:
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise ValueError("OPENAI_API_KEY 환경 변수가 설정되지 않았습니다.")
+        _llm_openai = ChatOpenAI(
+            model="gpt-4o-mini",
+            temperature=0.7,
+        )
+    return _llm_openai
 
-llm = llm_openai
+def get_llm_ollama():
+    """Ollama LLM 인스턴스를 반환 (lazy initialization)"""
+    global _llm_ollama
+    if _llm_ollama is None:
+        ollama_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+        _llm_ollama = OllamaLLM(
+            model="gemma3:4b",
+            base_url=ollama_url,
+        )
+    return _llm_ollama
+
+def get_llm():
+    """현재 사용 중인 LLM을 반환 (기본값: OpenAI)"""
+    # 환경 변수로 모델 선택 가능
+    model_type = os.getenv("LANGGRAPH_MODEL_TYPE", "openai").lower()
+    if model_type == "ollama":
+        return get_llm_ollama()
+    else:
+        return get_llm_openai()
+
+# 하위 호환성을 위한 변수 (deprecated)
+llm = None  # 직접 사용하지 말고 get_llm() 함수를 사용할 것
 # ========== 스키마 정보 ==========
 # 핵심 스키마 정보 - 지역 검색에 최적화
-filtered_schema_info = '''
 
+filtered_schema_info = '''
 # ========== 주요 테이블 및 검색 가이드 ==========
 
 ## 지역별 주택 검색 방법:
@@ -94,29 +122,25 @@ housing_tables = {
             "address_raw": "address_raw - 주소",
             "address_id": "address_id - 주소 ID - FK → housing.addresses.id",
             "building_type": "building_type - 건물 타입 - FK → housing.code_master.cd",
-            "notice_extra": "notice_extra - 공고 추가 정보 (JSONB)",
-            "has_images": "has_images - 이미지 여부 (BOOLEAN)",
-            "has_floorplan": "has_floorplan - 층 계획서 여부 (BOOLEAN)",
-            "has_documents": "has_documents - 문서 여부 (BOOLEAN)",
-            "list_url": "list_url - 목록 링크 (TEXT)",
-            "detail_url": "detail_url (TEXT)",
-            "posted_at": "posted_at (TIMESTAMP)",
-            "last_modified": "last_modified (TIMESTAMP)",
-            "apply_start_at": "apply_start_at (TIMESTAMP)",
-            "apply_end_at": "apply_end_at (TIMESTAMP)",
-            "created_at": "created_at - 생성일시",
-            "updated_at": "updated_at - 수정일시",
+            "notice_extra": "notice_extra - 공고 추가 정보",
+            "has_images": "has_images - 이미지 여부",
+            "has_floorplan": "has_floorplan - 층 계획서 여부",
+            "has_documents": "has_documents - 문서 여부",
+            "list_url": "list_url - 목록 링크",
+            "detail_url": "detail_url",
+            "posted_at": "posted_at",
+            "last_modified": "last_modified",
+            "apply_start_at": "apply_start_at",
+            "apply_end_at": "apply_end_at",
         },
     },
     "housing.platforms": {
         "columns": {
             "code": "code - PK, 고유 식별자",
             "name": "name - 이름",
-            "url": "url - 링크 (TEXT)",
+            "url": "url - 링크",
             "platform_code": "platform_code - 플랫폼 코드 - FK → housing.code_master.cd",
-            "is_active": "is_active - 활성화 여부 (BOOLEAN)",
-            "created_at": "created_at - 생성일시",
-            "updated_at": "updated_at - 수정일시",
+            "is_active": "is_active - 활성화 여부",
         },
     },
     "housing.unit_features": {
@@ -125,9 +149,7 @@ housing_tables = {
             "unit_id": "unit_id - FK → housing.units.unit_id",
             "room_count": "room_count - 개수",
             "bathroom_count": "bathroom_count - 개수",
-            "direction": "direction (VARCHAR(20))",
-            "created_at": "created_at - 생성일시",
-            "updated_at": "updated_at - 수정일시",
+            "direction": "direction - 방향",
         },
     },
     "housing.units": {
@@ -137,16 +159,13 @@ housing_tables = {
             "unit_type": "unit_type - 타입",
             "deposit": "deposit - 보증금",
             "rent": "rent - 임대료",
-            "maintenance_fee": "maintenance_fee (NUMERIC)",
+            "maintenance_fee": "maintenance_fee - 관리비",
             "area_m2": "area_m2 - 면적",
             "floor": "floor - 층",
             "room_number": "room_number - 방",
-            "occupancy_available": "occupancy_available (BOOLEAN)",
-            "occupancy_available_at": "occupancy_available_at (TIMESTAMP)",
-            "capacity": "capacity (INTEGER)",
-            "created_at": "created_at - 생성일시",
-            "updated_at": "updated_at - 수정일시",
-        },
+            "occupancy_available": "occupancy_available - 입주가능 여부",
+            "occupancy_available_at": "occupancy_available_at - 입주가능 일시",
+            "capacity": "capacity - 수용인원",
     },
 }
 
@@ -159,7 +178,6 @@ infra_tables = {
             "ctpv_nm": "ctpv_nm - 시도 이름",
             "sgg_nm": "sgg_nm - 시군구 이름",
             "emd_nm": "emd_nm - 동 이름",
-            "created_at": "created_at - 생성일시",
         },
     },
     "infra.facility_info": {
@@ -181,7 +199,6 @@ infra_tables = {
             "facility_extra": "facility_extra - 시설 추가 정보 (국공립/사립 등)",
             "data_source": "data_source - 데이터 출처",
             "last_updated": "last_updated - 최근 업데이트 일시",
-            "created_at": "created_at - 생성일시",
         },
     },
     "infra.housing_facility_distances": {
@@ -190,9 +207,8 @@ infra_tables = {
             "notice_id": "notice_id - ID/식별자",
             "facility_id": "facility_id - FK → infra.facility_info.facility_id",
             "distance_m": "distance_m - 거리",
-            "walking_time_m": "walking_time_m (INTEGER)",
-            "driving_time_m": "driving_time_m (INTEGER)",
-            "created_at": "created_at - 생성일시",
+            "walking_time_m": "walking_time_m - 걸어서 걸리는 시간",
+            "driving_time_m": "driving_time_m - 차량으로 걸리는 시간",
         },
     },
     "infra.infra_code": {
@@ -201,7 +217,7 @@ infra_tables = {
             "name": "name - 이름",
             "description": "description - 설명",
             "upper_cd": "upper_cd - 코드",
-            "source": "source (VARCHAR(255))",
+            "source": "source - 출처",
         },
     },
     "infra.transport_points": {
@@ -212,10 +228,10 @@ infra_tables = {
             "official_code": "official_code - 코드",
             "line_name": "line_name - 이름",
             "stop_type": "stop_type - 타입",
-            "is_transfer": "is_transfer (BOOLEAN)",
+            "is_transfer": "is_transfer - 환승역 여부",
             "lat": "lat - 위도",
             "lon": "lon - 경도",
-            "extra_info": "extra_info (JSONB)",
+            "extra_info": "extra_info - 추가 정보",
             "created_at": "created_at - 생성일시",
         },
     },
@@ -235,8 +251,6 @@ rtms_tables = {
             "housing_code": "housing_code - 코드",
             "min_area": "min_area - 면적",
             "max_area": "max_area - 면적",
-            "created_at": "created_at - 생성일시",
-            "updated_at": "updated_at - 수정일시",
         },
     },
     "rtms.transactions_rent": {
@@ -263,9 +277,7 @@ rtms_tables = {
         },
     },
 }
-
-
-    '''
+'''
 
 
 # ========== 헬퍼 함수 ==========
@@ -274,31 +286,32 @@ def query_from_natural_language(question: str) -> str:
     자연어 질문을 PostgreSQL SQL 쿼리로 변환하여 반환합니다.
     """
     prompt = f"""
-You are an expert PostgreSQL data analyst.
-Based on the database schema below, write a syntactically correct SELECT-only SQL query 
-to answer the user's question.
+    You are an expert PostgreSQL data analyst.
+    Based on the database schema below, write a syntactically correct SELECT-only SQL query
+    to answer the user's question.
 
-SCHEMA:
-{filtered_schema_info}
+    SCHEMA:
+    {filtered_schema_info}
 
-Rules:
-- Only generate SELECT queries referencing tables listed in the SCHEMA above.
-- Use fully qualified table names (e.g., housing.addresses)
-- Join tables only if both appear in the SCHEMA above and have a foreign key relationship
-- Avoid using ORDER BY on columns not in SELECT DISTINCT
-- No UPDATE, DELETE, INSERT. Only SELECT.
+    Rules:
+    - Only generate SELECT queries referencing tables listed in the SCHEMA above.
+    - Use fully qualified table names (e.g., housing.addresses)
+    - Join tables only if both appear in the SCHEMA above and have a foreign key relationship
+    - Avoid using ORDER BY on columns not in SELECT DISTINCT
+    - No UPDATE, DELETE, INSERT. Only SELECT.
 
-- 사용자가 ~주택 추천해줘 라고 요청한다면
-주택 이름, 주소, tag_type과 tag_value에 대한 정보만 조회하는 쿼리를 반환한다. 
-- 사용자가 그외의 정보를 특정해서 물어보는 경우 해당 테이블과 컬럼을 조회하는 쿼리를 반환한다. 
+    - 사용자가 ~주택 추천해줘 라고 요청한다면
+    주택 이름, 주소, tag_type과 tag_value에 대한 정보만 조회하는 쿼리를 반환한다.
+    - 사용자가 그외의 정보를 특정해서 물어보는 경우 해당 테이블과 컬럼을 조회하는 쿼리를 반환한다.
 
-USER QUESTION:
-{question}
+    USER QUESTION:
+    {question}
 
-Return only the SQL query.
-"""
+    Return only the SQL query.
+    """
+    llm = get_llm()  # LLM 인스턴스 가져오기
     response = llm.invoke(prompt)
-    
+
     # LLM 모델 타입에 따라 content 추출 방식이 다름
     # OpenAI (ChatOpenAI): response.content 속성 존재
     # Ollama (OllamaLLM): content 속성이 없고 직접 문자열이거나 다른 방식으로 접근
@@ -316,7 +329,7 @@ Return only the SQL query.
     else:
         # 기타 모델: 안전하게 처리
         sql = response.content.strip() if hasattr(response, 'content') else str(response).strip()
-    
+
     return sql  # 마크다운 형식으로 나옴
 
 
@@ -393,7 +406,7 @@ def vector_search(query: str) -> str:
         
         # 사용 가능한 모델 타입 확인 (디버깅용)
         available_models = [attr for attr in dir(EmbeddingModelType) 
-                          if not attr.startswith('_') and attr.isupper()]
+                            if not attr.startswith('_') and attr.isupper()]
         
         # 3. 모델 타입 확인 및 설정
         # MULTILINGUAL_E5_LARGE가 존재하는지 확인
@@ -467,5 +480,6 @@ available_tools = [
 # ========== LLM with Tools ==========
 def create_llm_with_tools():
     """도구가 연결된 LLM 생성"""
+    llm = get_llm()  # LLM 인스턴스 가져오기
     return llm.bind_tools(available_tools)  # LLM에 등록된 tools 적용
 

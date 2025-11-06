@@ -10,5 +10,6 @@ urlpatterns = [
     path('health', views.health_view, name='health'),
     path('chat', views.chat_view, name='chat'),
     path('ask', views.ask_view, name='ask'),
+    path('ask-langgraph', views.ask_langgraph_view, name='ask-langgraph'),
     path('clear-memory', views.clear_memory_view, name='clear-memory'),
 ]

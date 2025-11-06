@@ -130,3 +130,26 @@ export const clearMemory = async (
     throw new Error(`HTTP error! status: ${response.status}`);
   }
 };
+
+export const askWithLangGraph = async (
+  question: string,
+  model_type: string = "openai"
+): Promise<ChatResponse> => {
+  const response = await fetch(`${API_URL}/api/llm/ask-langgraph`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      question,
+      model_type,
+      with_memory: false,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`HTTP error! status: ${response.status}`);
+  }
+
+  return response.json();
+};

@@ -69,4 +69,5 @@ def main(query=None):
 
 if __name__ == "__main__":
     main("월세지원을 받는 중 군입대하면 어떻게 되는거야?")
+    main("관악구에 있는 주택을 추천해줘")
 

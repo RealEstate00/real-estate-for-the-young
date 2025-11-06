@@ -17,9 +17,11 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./backend/services/db/schema/housing_schema.sql:/docker-entrypoint-initdb.d/01_housing_schema.sql
-      - ./backend/services/db/schema/infra_schema.sql:/docker-entrypoint-initdb.d/02_infra_schema.sql
-      - ./backend/services/db/schema/rtms_schema.sql:/docker-entrypoint-initdb.d/03_rtms_schema.sql
+      - ./backend/services/db/schema/00_extensions.sql:/docker-entrypoint-initdb.d/00_extensions.sql
+      - ./backend/services/db/schema/auth_schema.sql:/docker-entrypoint-initdb.d/01_auth_schema.sql
+      - ./backend/services/db/schema/housing_schema.sql:/docker-entrypoint-initdb.d/02_housing_schema.sql
+      - ./backend/services/db/schema/infra_schema.sql:/docker-entrypoint-initdb.d/03_infra_schema.sql
+      - ./backend/services/db/schema/rtms_schema.sql:/docker-entrypoint-initdb.d/04_rtms_schema.sql
     networks:
       - housing_network
     restart: unless-stopped
@@ -35,6 +37,8 @@ services:
       context: .
       dockerfile: Dockerfile.backend
     container_name: seoul_housing_api
+    env_file:
+      - .env
     environment:
       - DATABASE_URL=postgresql://${PG_USER:-postgres}:${PG_PASSWORD:-post1234}@postgres:5432/${PG_DB:-rey}
       - ENV=development

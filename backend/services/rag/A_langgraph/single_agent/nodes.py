@@ -20,21 +20,25 @@ def ai_agent_node(state: AssistantState):
     
     # 시스템 프롬프트로 역할 부여
     system_prompt = SystemMessage(content="""
-    당신은 도움이 되는 AI 개인 비서입니다. 
-    사용자의 요청을 분석하여 적절한 도구를 사용해 도와주세요.
-    
+    당신은 도움이 되는 AI 개인 비서입니다.
+    사용자의 요청을 분석하여 적절한 도구를 **하나만** 선택해 사용하세요.
+
     ⚠️ 중요: 이 시스템은 "매물"이나 "판매용 주택"이 아닌 "사회주택"과 "공동체주택" 정보를 다룹니다.
-    
+
     사용 가능한 도구:
-    - rdb_search: 사회주택 및 공동체주택 정보 검색 (지역별 주택 공고 정보)
+    - rdb_search: 사회주택 및 공동체주택 정보 검색 (지역별 주택 공고 정보, 공공시설 정보)
       * housing.notices 테이블에는 사회주택/공동체주택 공고 정보가 저장되어 있습니다.
+      * infra.facility_info 테이블에는 공공시설 정보가 저장되어 있습니다.
       * 사용자가 "강서구 주택"이라고 요청하면 "강서구에 있는 사회주택 및 공동체주택 공고 조회"로 이해해야 합니다.
       * "매물", "판매", "구매" 등의 용어는 사용하지 마세요. "공고", "사회주택", "공동체주택" 용어를 사용하세요.
-    - vector_search: 금융 정책 정보 검색 (청년 지원, 대출 정보 등)
-    
-    정확한 도구이름을 반환하세요
-    
-    rdb_search 도구를 사용할 때는, 사용자의 원래 요청을 그대로 rdb_search에 입력값으로 전달하세요. 
+    - vector_search: 금융 정책 문서 검색 (청년 지원 정책, 대출 제도 등 - 일반적인 질문에만 사용)
+
+    **도구 선택 규칙:**
+    - 지역명, 주택, 공공시설 관련 질문 → rdb_search만 사용
+    - 청년 지원 정책, 금융 제도 관련 질문 → vector_search만 사용
+    - 둘 다 사용하지 말고 하나만 선택하세요!
+
+    rdb_search 도구를 사용할 때는, 사용자의 원래 요청을 그대로 rdb_search에 입력값으로 전달하세요.
     (예: "강서구에 있는 주택알려줘" → rdb_search로 그대로 입력)
     쿼리 변환이나 재가공 없이, 적합한 도구를 정하고 사용자의 입력을 해당 도구에 전달하세요.
     """)
@@ -81,9 +85,9 @@ def tool_execution_node(state: AssistantState):
         
         try:
             if tool_name == "rdb_search":
-                result = rdb_search(tool_args["query"])
+                result = rdb_search.invoke({"query": tool_args["query"]})
             elif tool_name == "vector_search":
-                result = vector_search(tool_args["query"])
+                result = vector_search.invoke({"query": tool_args["query"]})
             else:
                 result = f"알 수 없는 도구: {tool_name}"
             
@@ -114,18 +118,18 @@ def final_response_node(state: AssistantState):
     도구 실행 결과를 바탕으로 최종 응답을 생성하는 노드
     """
     llm = ChatOpenAI(
-        model="gpt-4o-mini",  # gpt-5-nano는 존재하지 않음
-        temperature=0.7,
+        model="gpt-4o-mini",
+        temperature=0.1,  # 더 빠른 토큰 생성을 위해 낮춤
     )
-    
+
     system_prompt = SystemMessage(content="""
-    도구 실행 결과를 바탕으로 사용자에게 친근하고 도움이 되는 최종 답변을 제공하세요.
-    
+    도구 실행 결과를 바탕으로 사용자에게 간결하고 명확한 답변을 제공하세요.
+
     답변 가이드라인:
-    1. 검색 결과가 있으면 구체적이고 유용한 정보를 제공
-    2. 검색 결과가 없으면 대안을 제시
-    3. 친근하고 도움이 되는 톤으로 작성
-    4. 필요하면 추가 질문을 유도
+    1. 검색 결과를 간결하게 요약 (불필요한 서론/결론 제거)
+    2. 핵심 정보만 2-3문장으로 제공
+    3. 이모지 사용 최소화
+    4. 검색 결과가 없으면 "현재 등록된 정보가 없습니다"라고 간단히 답변
     """)
     
     # 전체 대화 컨텍스트 포함
@@ -134,6 +138,14 @@ def final_response_node(state: AssistantState):
     print("최종 응답 생성 중...")
     response = llm.invoke(messages)
     
+    # response에서 content가 없으면 content로 감싸서 반환
+    if hasattr(response, "content"):
+        result_message = {"content": response.content}
+    elif isinstance(response, dict) and "content" in response:
+        result_message = {"content": response["content"]}
+    else:
+        result_message = {"content": str(response)}
+
     # ✅ 반드시 딕셔너리 반환
     return {"messages": [response]}
 
