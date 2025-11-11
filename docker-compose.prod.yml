@@ -14,7 +14,7 @@ services:
       POSTGRES_PASSWORD: ${PG_PASSWORD:-post1234}
       POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C.UTF-8 --auth-host=scram-sha-256"
     ports:
-      - "5432:5432"
+      - "55432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./backend/services/db/schema/housing_schema.sql:/docker-entrypoint-initdb.d/01_housing_schema.sql
@@ -75,23 +75,23 @@ services:
       retries: 3
 
   # 프론트엔드 - Docker Hub에서 이미지 pull (빌드된 정적 파일을 Nginx로 서빙)
-  frontend:
-    # Docker Hub 이미지: jina1003/seoul-housing-frontend:latest
-    # 멀티플랫폼 이미지: 호스트 플랫폼에 맞는 이미지 자동 선택 (amd64/arm64)
-    image: jina1003/seoul-housing-frontend:latest
-    pull_policy: always
-    platform: linux/amd64 # AMD64 환경에서 명시적으로 지정 (Windows 호환성)
-    container_name: seoul_housing_frontend
-    environment:
-      - VITE_API_URL=http://localhost:8000
-      - REACT_APP_API_URL=http://localhost:8000
-    ports:
-      - "3000:3000"
-    depends_on:
-      - api
-    networks:
-      - housing_network
-    restart: unless-stopped
+#   frontend:
+#     # Docker Hub 이미지: jina1003/seoul-housing-frontend:latest
+#     # 멀티플랫폼 이미지: 호스트 플랫폼에 맞는 이미지 자동 선택 (amd64/arm64)
+#     image: jina1003/seoul-housing-frontend:latest
+#     pull_policy: always
+#     platform: linux/amd64 # AMD64 환경에서 명시적으로 지정 (Windows 호환성)
+#     container_name: seoul_housing_frontend
+#     environment:
+#       - VITE_API_URL=http://localhost:8000
+#       - REACT_APP_API_URL=http://localhost:8000
+#     ports:
+#       - "3000:3000"
+#     depends_on:
+#       - api
+#     networks:
+#       - housing_network
+#     restart: unless-stopped
 
 volumes:
   postgres_data:

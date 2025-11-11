@@ -122,15 +122,30 @@ def final_response_node(state: AssistantState):
         temperature=0.1,  # 더 빠른 토큰 생성을 위해 낮춤
     )
 
-    system_prompt = SystemMessage(content="""
-    도구 실행 결과를 바탕으로 사용자에게 간결하고 명확한 답변을 제공하세요.
+    # 도구 사용 여부 확인
+    tools_used = state.get("tools_used", [])
 
-    답변 가이드라인:
-    1. 검색 결과를 간결하게 요약 (불필요한 서론/결론 제거)
-    2. 핵심 정보만 2-3문장으로 제공
-    3. 이모지 사용 최소화
-    4. 검색 결과가 없으면 "현재 등록된 정보가 없습니다"라고 간단히 답변
-    """)
+    if tools_used:
+        # 도구를 사용한 경우: 검색 결과 기반 답변
+        system_prompt = SystemMessage(content="""
+        도구 실행 결과를 바탕으로 사용자에게 간결하고 명확한 답변을 제공하세요.
+
+        답변 가이드라인:
+        1. 검색 결과를 간결하게 요약 (불필요한 서론/결론 제거)
+        2. 핵심 정보만 2-3문장으로 제공
+        3. 이모지 사용 최소화
+        4. 검색 결과가 없으면 "현재 등록된 정보가 없습니다"라고 간단히 답변
+        """)
+    else:
+        # 도구를 사용하지 않은 경우: 일반 대화
+        system_prompt = SystemMessage(content="""
+        당신은 친절한 AI 비서입니다. 사용자에게 자연스럽고 따뜻하게 응답하세요.
+
+        답변 가이드라인:
+        1. 인사, 소개 등 일반적인 대화에는 친근하게 응답
+        2. 간결하고 명확한 답변 제공
+        3. 이모지 사용 최소화
+        """)
     
     # 전체 대화 컨텍스트 포함
     messages = [system_prompt] + state["messages"]
