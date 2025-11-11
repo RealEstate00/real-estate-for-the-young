@@ -297,17 +297,54 @@ def query_from_natural_language(question: str) -> str:
     - Only generate SELECT queries referencing tables listed in the SCHEMA above.
     - Use fully qualified table names (e.g., housing.addresses)
     - Join tables only if both appear in the SCHEMA above and have a foreign key relationship
-    - Avoid using ORDER BY on columns not in SELECT DISTINCT
     - No UPDATE, DELETE, INSERT. Only SELECT.
+    - Keep queries SIMPLE - avoid unnecessary subqueries or complex joins
+    - LIMIT results to 10 rows unless user asks for more
 
-    - 사용자가 ~주택 추천해줘 라고 요청한다면
-    주택 이름, 주소, tag_type과 tag_value에 대한 정보만 조회하는 쿼리를 반환한다.
-    - 사용자가 그외의 정보를 특정해서 물어보는 경우 해당 테이블과 컬럼을 조회하는 쿼리를 반환한다.
+    IMPORTANT - For housing search queries:
+    - housing.notices table contains housing announcements (주택 공고)
+    - housing.addresses table contains location information
+    - housing.notice_tags table contains tags (theme, transport, facility, eligibility)
+    - JOIN notices with addresses using: notices.address_id = addresses.id
+    - JOIN notices with notice_tags using: notices.notice_id = notice_tags.notice_id
+    - To search by district (구): use addresses.sgg_nm column with LIKE
+    - notices.building_type is already a code (e.g., 'bt_02', 'bt_04'), NO subquery needed
 
-    USER QUESTION:
-    {question}
+    Tag types in notice_tags:
+    - theme: 테마 (인증통과, 청년형, 여성안심, 창업형, 예술형, 취미형 등)
+    - transport: 교통편 (지하철역, 버스정류장 등)
+    - facility: 주변 시설 (학교, 편의점, 공원, 병원, 약국 등)
+    - eligibility: 자격 요건 (제한없음, 청년, 대학생 등)
 
-    Return only the SQL query.
+    Example queries:
+    1. "강남구에 있는 주택 추천해줘" or "강남구 주택":
+    SELECT n.title, n.address_raw,
+           string_agg(DISTINCT nt.tag_value, ', ') FILTER (WHERE nt.tag_type = 'theme') as themes,
+           string_agg(DISTINCT nt.tag_value, ', ') FILTER (WHERE nt.tag_type = 'transport') as transport,
+           string_agg(DISTINCT nt.tag_value, ', ') FILTER (WHERE nt.tag_type = 'facility') as facilities
+    FROM housing.notices n
+    JOIN housing.addresses a ON n.address_id = a.id
+    LEFT JOIN housing.notice_tags nt ON n.notice_id = nt.notice_id
+    WHERE a.sgg_nm LIKE '%강남구%'
+    GROUP BY n.notice_id, n.title, n.address_raw
+    LIMIT 10
+
+    2. "서울의 사회주택":
+    SELECT n.title, n.address_raw
+    FROM housing.notices n
+    WHERE n.building_type = 'bt_02'
+    LIMIT 10
+
+    3. "청년형 주택" or "여성안심 주택":
+    SELECT n.title, n.address_raw, nt.tag_value
+    FROM housing.notices n
+    LEFT JOIN housing.notice_tags nt ON n.notice_id = nt.notice_id
+    WHERE nt.tag_type = 'theme' AND nt.tag_value LIKE '%청년형%'
+    LIMIT 10
+
+    User question: {question}
+
+    Return ONLY the SQL query without any explanation or markdown formatting.
     """
     llm = get_llm()  # LLM 인스턴스 가져오기
     response = llm.invoke(prompt)
@@ -359,7 +396,12 @@ def rdb_search(query: str) -> str:
     query_from_natural_language 함수를 사용하여 자연어 질문을 SQL 쿼리로 변환하고,
     postgres 데이터베이스에서 데이터를 조회하는 도구입니다.
     """
-    sql = query_from_natural_language(query)
+    sql_raw = query_from_natural_language(query)
+
+    # 마크다운 등 불필요한 형식 제거
+    sql = extract_sql(sql_raw)
+
+    print(f"Generated SQL: {sql}")
 
     database_url = os.getenv('DATABASE_URL')
     if not database_url:
