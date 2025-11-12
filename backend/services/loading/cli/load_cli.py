@@ -20,6 +20,7 @@ from backend.services.db.common.db_utils import test_connection, get_engine
 from backend.services.loading.housing.housing_db_loader import HousingLoader, LoaderConfig, build_db_url
 from backend.services.rag.core import MultiModelEmbedder
 from sqlalchemy import text
+import psycopg
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -177,8 +178,8 @@ def _create_vector_db_schema():
 
             # 필요한 테이블들이 존재하는지 확인
             required_tables = [
-                'embedding_models', 'document_sources', 'document_chunks', 
-                'chunk_embeddings', 'search_logs', 'model_metrics',
+                'embedding_models', 'document_sources', 'document_chunks',
+                'search_logs', 'model_metrics',
                 'embeddings_e5_small', 'embeddings_e5_base', 'embeddings_e5_large', 'embeddings_kakaobank'
             ]
             
@@ -202,12 +203,19 @@ def _create_vector_db_schema():
             logger.info("🔧 테이블 생성 중...")
 
             # 스키마 파일 읽기 및 실행
+            # psycopg를 사용하여 multi-statement SQL을 올바르게 처리
             schema_file = Path("backend/services/rag/vectorstore/schema.sql")
             if schema_file.exists():
-                with open(schema_file, 'r', encoding='utf-8') as f:
-                    schema_sql = f.read()
-                conn.execute(text(schema_sql))
-                conn.commit()
+                # SQLAlchemy 엔진에서 DB URL 가져오기
+                db_url = str(engine.url)
+
+                # psycopg를 사용하여 multi-statement SQL 실행
+                with psycopg.connect(db_url) as psycopg_conn:
+                    with psycopg_conn.cursor() as cur:
+                        with open(schema_file, 'r', encoding='utf-8') as f:
+                            schema_sql = f.read()
+                        cur.execute(schema_sql)
+                    psycopg_conn.commit()
                 logger.info("✅ vector_db 테이블 생성 완료")
             else:
                 logger.error(f"❌ 스키마 파일을 찾을 수 없습니다: {schema_file}")

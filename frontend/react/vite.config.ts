@@ -13,6 +13,14 @@ export default defineConfig({
       Pragma: "no-cache",
       Expires: "0",
     },
+    // API 프록시 설정 - CORS 문제 해결
+    proxy: {
+      "/api": {
+        target: "http://localhost:8000",
+        changeOrigin: true,
+        secure: false,
+      },
+    },
   },
   // 빌드 시 캐시 무효화를 위한 파일명 해시 사용
   build: {
