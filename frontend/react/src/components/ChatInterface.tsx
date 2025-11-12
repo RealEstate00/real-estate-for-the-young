@@ -1,32 +1,37 @@
 import React, { useState, useRef, useEffect } from "react";
-import {
-  Send,
-  RotateCcw,
-  Home,
-  FileText,
-  Square,
-  History,
-  X,
-  ChevronLeft,
-  ChevronRight,
+import { 
+  Send, 
+  RotateCcw, 
+  Home, 
+  FileText, 
+  User, 
+  LogOut, 
+  LogIn, 
+  UserPlus, 
+  Edit, 
+  CheckSquare, 
+  Trash2, 
+  Check, 
+  ChevronLeft, 
+  ChevronRight, 
+  X, 
   GripVertical,
-  Edit,
-  Trash2,
-  CheckSquare,
-  Check,
-  LogIn,
-  UserPlus,
-  User,
-  LogOut,
+  Square,
+  History
 } from "lucide-react";
-import { chat, clearMemory, ChatMessage, SourceInfo } from "../services/llmApi";
-import { chatWithSave, isAuthenticated } from "../services/conversationApi";
+import {
+  // askWithAgent,
+  askWithLangGraph,
+  clearMemory,
+  ChatMessage,
+  SourceInfo
+} from "../services/llmApi";
 import {
   login,
   register,
   logout,
   getUser,
-  User as UserType,
+  User as UserType
 } from "../services/authApi";
 
 interface Message extends ChatMessage {
@@ -419,76 +424,28 @@ export default function ChatInterface() {
     setAbortController(controller);
 
     try {
-      // 로그인 여부 확인
-      const userIsAuthenticated = isAuthenticated();
-
       let aiMessage: Message;
       let responseTitle: string | undefined;
 
-      if (userIsAuthenticated) {
-        // 로그인 사용자: DB 저장 API 사용
-        console.log("🔐 로그인 사용자 - DB 저장 모드");
+      // 모든 사용자: LangGraph API 사용
+      console.log("🤖 LangGraph 모드");
 
-        // conversation_id가 숫자면 사용, 아니면 null
-        const dbConversationId =
-          currentConversationId && !isNaN(Number(currentConversationId))
-            ? Number(currentConversationId)
-            : null;
+      // LangGraph API 사용:
+      const response = await askWithLangGraph(input, "openai");
 
-        const dbResponse = await chatWithSave({
-          conversation_id: dbConversationId,
-          message: input,
-          model_type: "ollama",
-        });
+      console.log('LangGraph response:', response);
 
-        // DB에서 받은 conversation_id를 currentConversationId로 설정
-        if (
-          !currentConversationId ||
-          currentConversationId !== String(dbResponse.conversation_id)
-        ) {
-          setCurrentConversationId(String(dbResponse.conversation_id));
-        }
+      aiMessage = {
+        role: "assistant",
+        content: response.message,
+        sources:
+          response.sources && response.sources.length > 0
+            ? [response.sources[0]]
+            : [],
+        timestamp: new Date(),
+      };
 
-        aiMessage = {
-          role: "assistant",
-          content: dbResponse.assistant_message.content,
-          sources:
-            dbResponse.sources && dbResponse.sources.length > 0
-              ? [dbResponse.sources[0]]
-              : [],
-          timestamp: new Date(),
-        };
-
-        // DB 응답에 제목이 있으면 사용 (첫 메시지인 경우)
-        if (dbResponse.title) {
-          responseTitle = dbResponse.title;
-          console.log("✅ 백엔드에서 받은 제목:", responseTitle);
-        } else if (updatedMessages.length === 1) {
-          console.warn("⚠️ 첫 번째 응답이지만 백엔드에서 제목을 받지 못했습니다.");
-        }
-      } else {
-        // 비로그인 사용자: localStorage만 사용
-        console.log("👤 비로그인 사용자 - localStorage 모드");
-
-        const chatMessages: ChatMessage[] = updatedMessages.map((m) => ({
-          role: m.role,
-          content: m.content,
-        }));
-
-        const response = await chat(chatMessages, "ollama", controller.signal);
-
-        aiMessage = {
-          role: "assistant",
-          content: response.message,
-          sources:
-            response.sources && response.sources.length > 0
-              ? [response.sources[0]]
-              : [],
-          timestamp: new Date(),
-        };
-
-        responseTitle = response.title;
-      }
+      responseTitle = response.title;
 
       setMessages((prev) => {
         const updated = [...prev, aiMessage];
@@ -751,6 +708,17 @@ export default function ChatInterface() {
       errors.password = "비밀번호를 입력해주세요.";
     } else if (registerPassword.length < 8) {
       errors.password = "비밀번호는 최소 8자 이상이어야 합니다.";
+    } else {
+      // Django의 비밀번호 유효성 검사 규칙 적용
+      const hasNumber = /\d/.test(registerPassword);
+      const hasLetter = /[a-zA-Z]/.test(registerPassword);
+      const commonPasswords = ['password', '12345678', 'qwerty', 'abc123', '........'];
+
+      if (commonPasswords.includes(registerPassword.toLowerCase())) {
+        errors.password = "너무 흔히 사용되는 비밀번호입니다. 다른 비밀번호를 사용해주세요.";
+      } else if (!hasNumber || !hasLetter) {
+        errors.password = "비밀번호는 숫자와 문자를 모두 포함해야 합니다.";
+      }
     }
 
     // 비밀번호 확인 검증
@@ -795,7 +763,14 @@ export default function ChatInterface() {
       let generalError = null;
 
       if (error.message) {
-        if (error.message.includes("Email already registered")) {
+        // 필드별 에러 처리
+        if (error.message.includes("이메일:")) {
+          backendErrors.email = error.message.replace("이메일: ", "");
+        } else if (error.message.includes("사용자명:")) {
+          backendErrors.username = error.message.replace("사용자명: ", "");
+        } else if (error.message.includes("비밀번호:")) {
+          backendErrors.password = error.message.replace("비밀번호: ", "");
+        } else if (error.message.includes("Email already registered")) {
           backendErrors.email = "이미 등록된 이메일입니다.";
         } else if (error.message.includes("Username already taken")) {
           backendErrors.username = "이미 사용 중인 사용자명입니다.";

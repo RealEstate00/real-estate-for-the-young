@@ -179,3 +179,65 @@ def clear_memory_view(request):
             {'detail': f'Error: {str(e)}'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def ask_langgraph_view(request):
+    """
+    Ask question using LangGraph
+
+    POST /api/llm/ask-langgraph
+
+    Request:
+    {
+        "question": "...",
+        "model_type": "openai"
+    }
+
+    Response:
+    {
+        "message": "...",
+        "sources": [...]
+    }
+    """
+    try:
+        from backend.services.api.routers.llm import (
+            ask_with_langgraph,
+            QuestionRequest
+        )
+
+        question = request.data.get('question', '')
+        model_type = request.data.get('model_type', 'openai')
+        with_memory = request.data.get('with_memory', False)
+
+        if not question:
+            return Response(
+                {'detail': 'question field is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        llm_request = QuestionRequest(
+            question=question,
+            model_type=model_type,
+            with_memory=with_memory
+        )
+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            llm_response = loop.run_until_complete(ask_with_langgraph(llm_request))
+        finally:
+            loop.close()
+
+        return Response({
+            'message': llm_response.message,
+            'sources': llm_response.sources,
+        })
+
+    except Exception as e:
+        logger.error(f"LangGraph ask error: {e}", exc_info=True)
+        return Response(
+            {'detail': f'LangGraph error: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )

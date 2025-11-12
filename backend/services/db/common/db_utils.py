@@ -10,7 +10,7 @@ from contextlib import contextmanager
 
 ENV_PATH = Path(__file__).resolve().parent / ".env"
 if ENV_PATH.exists():
-    load_dotenv(ENV_PATH)
+    load_dotenv(ENV_PATH, override=True)
 
 def get_engine():
     """PostgreSQL 엔진 생성"""
@@ -21,7 +21,7 @@ def get_engine():
     db = os.getenv("PG_DB", "rey")
     # Optional schema search_path: add options if needed
     url = f"postgresql+psycopg2://{user}:{password}@{host}:{port}/{db}"
-    eng = create_engine(url, pool_pre_ping=True, pool_recycle=3600, future=True)
+    eng = create_engine(url, pool_pre_ping=True, pool_recycle=3600)
     return eng
 
 def get_session():

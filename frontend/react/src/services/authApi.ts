@@ -83,7 +83,30 @@ export const register = async (
 
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.detail || "Registration failed");
+
+    // 필드별 에러 메시지 처리
+    if (error.email) {
+      const emailError = error.email[0];
+      if (emailError.includes("이미 존재합니다") || emailError.includes("already exists")) {
+        throw new Error("이메일: 이미 등록된 이메일입니다.");
+      }
+      throw new Error(`이메일: ${emailError}`);
+    }
+    if (error.username) {
+      const usernameError = error.username[0];
+      if (usernameError.includes("이미 존재합니다") || usernameError.includes("already exists")) {
+        throw new Error("사용자명: 이미 사용 중인 사용자명입니다.");
+      }
+      throw new Error(`사용자명: ${usernameError}`);
+    }
+    if (error.password) {
+      throw new Error(`비밀번호: ${error.password[0]}`);
+    }
+    if (error.password_confirm) {
+      throw new Error(`비밀번호 확인: ${error.password_confirm[0]}`);
+    }
+
+    throw new Error(error.detail || "회원가입에 실패했습니다.");
   }
 
   const tokenResponse: TokenResponse = await response.json();

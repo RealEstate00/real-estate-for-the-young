@@ -678,3 +678,63 @@ async def clear_memory(model_type: ModelType = "ollama"):
     except Exception as e:
         logger.error(f"Error clearing memory: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+
+@router.post("/ask-langgraph", response_model=ChatResponse)
+async def ask_with_langgraph(request: QuestionRequest):
+    """
+    LangGraph를 사용한 질문 답변
+    """
+    try:
+        from langchain_core.messages import HumanMessage
+        from backend.services.rag.A_langgraph.single_agent.graph import get_rey_ai_graph
+        from backend.services.rag.A_langgraph.single_agent.state import AssistantState
+        
+        # 그래프 가져오기
+        graph = get_rey_ai_graph()
+        
+        # 초기 상태 생성
+        initial_state: AssistantState = {
+            "messages": [HumanMessage(content=request.question)],
+            "tools_used": []
+        }
+        
+        # 그래프 실행
+        final_state = graph.invoke(initial_state)
+        
+        # 최종 메시지 추출
+        messages = final_state.get("messages", [])
+        if messages:
+            final_message = messages[-1]
+            answer = final_message.content if hasattr(final_message, 'content') else str(final_message)
+        else:
+            answer = "응답을 생성할 수 없습니다."
+        
+        # 소스 정보는 도구 사용 정보에서 추출 가능
+        tools_used = final_state.get("tools_used", [])
+        
+        return ChatResponse(
+            message=answer,
+            sources=[]  # 필요시 도구 결과에서 소스 추출
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in ask_with_langgraph: {e}", exc_info=True)
+        # 에러 메시지를 더 상세하게 로깅
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        
+        # 사용자에게 친절한 에러 메시지 반환
+        error_message = "죄송합니다. 답변 생성 중 문제가 발생했습니다."
+        if "database" in str(e).lower() or "postgres" in str(e).lower():
+            error_message = "데이터베이스 연결에 문제가 있습니다. 잠시 후 다시 시도해주세요."
+        elif "timeout" in str(e).lower() or "시간 초과" in str(e):
+            error_message = "답변 생성 시간이 초과되었습니다. 잠시 후 다시 시도해주세요."
+        elif "ollama" in str(e).lower() or "openai" in str(e).lower():
+            error_message = "LLM 서버 연결에 문제가 있습니다. 서버가 실행 중인지 확인해주세요."
+        
+        return ChatResponse(
+            message=error_message,
+            sources=[]
+        )
