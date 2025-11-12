@@ -29,21 +29,26 @@ def download_model(model_type: EmbeddingModelType, model_name: str):
     print(f"{'='*60}\n")
     
     try:
-<<<<<<< HEAD
         # ModelFactory를 사용하여 모델 다운로드 및 로드
         model = ModelFactory.create_model(model_type, auto_load=True)
         
         print(f"✅ 다운로드 완료: {model_name}")
         print(f"   모델 타입: {type(model.model).__name__}")
         print(f"   차원: {model.get_dimension()}")
-=======
+
         # ModelLoader를 사용하여 모델 다운로드
         loader = ModelLoader()
         model, tokenizer = loader.load(model_type)
         
         print(f"✅ 다운로드 완료: {model_name}")
         print(f"   모델 타입: {type(model).__name__}")
->>>>>>> a692a65 (refactor:LLM호출 지연 문제 해결)
+
+        # ModelFactory를 사용하여 모델 다운로드 및 로드
+        model = ModelFactory.create_model(model_type, auto_load=True)
+        
+        print(f"✅ 다운로드 완료: {model_name}")
+        print(f"   모델 타입: {type(model.model).__name__}")
+        print(f"   차원: {model.get_dimension()}")
         return True
         
     except Exception as e:
