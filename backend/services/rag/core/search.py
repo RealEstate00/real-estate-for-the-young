@@ -68,8 +68,12 @@ class VectorRetriever:
         """PostgreSQL 연결"""
         if self._conn and not self._conn.closed:
             return self._conn
-        
+
         self._conn = psycopg2.connect(**self.db_config)
+        # vector_db 스키마와 public 스키마를 모두 검색 경로에 추가
+        cur = self._conn.cursor()
+        cur.execute("SET search_path TO vector_db, public;")
+        cur.close()
         return self._conn
     
     def _get_embedding_table(self) -> str:

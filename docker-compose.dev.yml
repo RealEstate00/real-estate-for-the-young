@@ -43,7 +43,6 @@ services:
       - DATABASE_URL=postgresql://${PG_USER:-postgres}:${PG_PASSWORD:-post1234}@postgres:5432/${PG_DB:-rey}
       - ENV=development
       - ENVIRONMENT=development
-      - SECRET_KEY=your-secret-key-here
       - PG_HOST=postgres
       - PG_PORT=5432
       - PG_DB=${PG_DB:-rey}

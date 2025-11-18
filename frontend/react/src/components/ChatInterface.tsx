@@ -1,37 +1,37 @@
 import React, { useState, useRef, useEffect } from "react";
-import { 
-  Send, 
-  RotateCcw, 
-  Home, 
-  FileText, 
-  User, 
-  LogOut, 
-  LogIn, 
-  UserPlus, 
-  Edit, 
-  CheckSquare, 
-  Trash2, 
-  Check, 
-  ChevronLeft, 
-  ChevronRight, 
-  X, 
+import {
+  Send,
+  RotateCcw,
+  Home,
+  FileText,
+  User,
+  LogOut,
+  LogIn,
+  UserPlus,
+  Edit,
+  CheckSquare,
+  Trash2,
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  X,
   GripVertical,
   Square,
-  History
+  History,
 } from "lucide-react";
 import {
   // askWithAgent,
   askWithLangGraph,
   clearMemory,
   ChatMessage,
-  SourceInfo
+  SourceInfo,
 } from "../services/llmApi";
 import {
   login,
   register,
   logout,
   getUser,
-  User as UserType
+  User as UserType,
 } from "../services/authApi";
 
 interface Message extends ChatMessage {
@@ -433,7 +433,7 @@ export default function ChatInterface() {
       // LangGraph API 사용:
       const response = await askWithLangGraph(input, "openai");
 
-      console.log('LangGraph response:', response);
+      console.log("LangGraph response:", response);
 
       aiMessage = {
         role: "assistant",
@@ -712,10 +712,17 @@ export default function ChatInterface() {
       // Django의 비밀번호 유효성 검사 규칙 적용
       const hasNumber = /\d/.test(registerPassword);
       const hasLetter = /[a-zA-Z]/.test(registerPassword);
-      const commonPasswords = ['password', '12345678', 'qwerty', 'abc123', '........'];
+      const commonPasswords = [
+        "password",
+        "12345678",
+        "qwerty",
+        "abc123",
+        "........",
+      ];
 
       if (commonPasswords.includes(registerPassword.toLowerCase())) {
-        errors.password = "너무 흔히 사용되는 비밀번호입니다. 다른 비밀번호를 사용해주세요.";
+        errors.password =
+          "너무 흔히 사용되는 비밀번호입니다. 다른 비밀번호를 사용해주세요.";
       } else if (!hasNumber || !hasLetter) {
         errors.password = "비밀번호는 숫자와 문자를 모두 포함해야 합니다.";
       }

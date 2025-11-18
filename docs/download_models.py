@@ -10,12 +10,11 @@ import sys
 from pathlib import Path
 
 # 프로젝트 루트를 Python 경로에 추가
-project_root = Path(__file__).parent
+project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 from backend.services.rag.models.config import EmbeddingModelType
-from backend.services.rag.models.loader import ModelLoader
-from backend.services.rag.models.encoder import EmbeddingEncoder
+from backend.services.rag.models.loader import ModelFactory
 import logging
 
 logging.basicConfig(level=logging.INFO)
@@ -30,12 +29,26 @@ def download_model(model_type: EmbeddingModelType, model_name: str):
     print(f"{'='*60}\n")
     
     try:
+        # ModelFactory를 사용하여 모델 다운로드 및 로드
+        model = ModelFactory.create_model(model_type, auto_load=True)
+        
+        print(f"✅ 다운로드 완료: {model_name}")
+        print(f"   모델 타입: {type(model.model).__name__}")
+        print(f"   차원: {model.get_dimension()}")
+
         # ModelLoader를 사용하여 모델 다운로드
         loader = ModelLoader()
         model, tokenizer = loader.load(model_type)
         
         print(f"✅ 다운로드 완료: {model_name}")
         print(f"   모델 타입: {type(model).__name__}")
+
+        # ModelFactory를 사용하여 모델 다운로드 및 로드
+        model = ModelFactory.create_model(model_type, auto_load=True)
+        
+        print(f"✅ 다운로드 완료: {model_name}")
+        print(f"   모델 타입: {type(model.model).__name__}")
+        print(f"   차원: {model.get_dimension()}")
         return True
         
     except Exception as e:

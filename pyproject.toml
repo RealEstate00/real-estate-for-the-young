@@ -30,7 +30,7 @@ dependencies = [
     "psycopg2-binary==2.9.11",
     "sqlalchemy>=2.0.36",
     "alembic>=1.13.0",
-    "pgvector>=0.2.5",
+    "pgvector>=0.3.6",  # PostgreSQL pgvector 0.8.1과 호환 (vector_cosine_ops 지원)
     
     # Redis & task queue
     "redis==5.0.1",
@@ -64,7 +64,7 @@ dependencies = [
     "sentence-transformers>=3.0.0",
     "peft>=0.13.0",
     "tqdm>=4.65.0",
-    "pgvector>=0.2.5,<0.4",
+    "pgvector>=0.3.6",  # PostgreSQL pgvector 0.8.1과 호환 (vector_cosine_ops 지원)
     
     # Utilities
     "python-multipart==0.0.6",

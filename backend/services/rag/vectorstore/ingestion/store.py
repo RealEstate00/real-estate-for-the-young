@@ -58,6 +58,8 @@ class PgVectorStore:
                 # 인코딩 명시적 설정
                 self.conn.set_client_encoding('UTF8')
                 self.cursor = self.conn.cursor()
+                # vector_db 스키마와 public 스키마를 모두 검색 경로에 추가
+                self.cursor.execute("SET search_path TO vector_db, public;")
                 logger.info("Connected to PostgreSQL")
             except Exception as e:
                 logger.error(f"Database connection failed: {e}")
